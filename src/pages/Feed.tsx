@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
-import { cmd } from "../commands";
+import { cmd, onEvent } from "../commands";
 import { Post } from "../types";
 import { useStore } from "../store";
 import Header from "../components/Header";
@@ -25,14 +24,13 @@ export default function FeedPage() {
   }, [setFeed]);
 
   useEffect(() => {
-    const unlisten = listen<Post>("feed:new_post", (event) => {
-      const incoming: Post = { ...event.payload, reactions: {}, my_reactions: [] };
+    return onEvent<Post>("feed:new_post", (payload) => {
+      const incoming: Post = { ...payload, reactions: {}, my_reactions: [] };
       const current = useStore.getState().feed;
       if (!current.some((p) => p.id === incoming.id)) {
         useStore.getState().setFeed([incoming, ...current]);
       }
     });
-    return () => { unlisten.then((fn) => fn()); };
   }, []);
 
   const handleReact = async (postId: string, emoji: string) => {

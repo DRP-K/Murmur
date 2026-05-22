@@ -224,15 +224,20 @@ async function createPost(content: string, expiresInDays?: number | null): Promi
 async function reactToPost(postId: string, emoji: string): Promise<void> {
   const rxs = await storage.getReactionsForPost(postId);
   const existing = rxs.find((r) => r.emoji === emoji);
+  let action: "add" | "remove";
   if (existing) {
     if (existing.reacted_by_me) {
       await storage.upsertReaction({ ...existing, count: Math.max(0, existing.count - 1), reacted_by_me: 0 });
+      action = "remove";
     } else {
       await storage.upsertReaction({ ...existing, count: existing.count + 1, reacted_by_me: 1 });
+      action = "add";
     }
   } else {
     await storage.upsertReaction({ post_id: postId, emoji, count: 1, reacted_by_me: 1 });
+    action = "add";
   }
+  relay.reactToPost(postId, emoji, action).catch(() => {});
 }
 
 // ── Anon threads ──────────────────────────────────────────────────────────────

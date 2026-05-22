@@ -82,7 +82,6 @@ export async function publishPost(
   expiresAt: number | null,
   recipientIds: string[]
 ): Promise<void> {
-  if (recipientIds.length === 0) return;
   await apiFetch("POST", "/api/posts", {
     id,
     content,
@@ -90,6 +89,10 @@ export async function publishPost(
     expires_at: expiresAt,
     recipient_ids: recipientIds,
   });
+}
+
+export async function reactToPost(postId: string, emoji: string, action: "add" | "remove"): Promise<void> {
+  await apiFetch("POST", "/api/reactions", { post_id: postId, emoji, action });
 }
 
 export async function notifyFriendship(

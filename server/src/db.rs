@@ -198,15 +198,6 @@ pub fn add_friendship(user_a: &str, user_b: &str, now: i64) -> Result<()> {
     Ok(())
 }
 
-pub fn get_friends_of(user_id: &str) -> Result<Vec<String>> {
-    let db = get().lock().unwrap();
-    let mut stmt = db.prepare(
-        "SELECT user_b FROM friendships WHERE user_a = ?1",
-    )?;
-    let rows = stmt.query_map(params![user_id], |r| r.get(0))?;
-    rows.collect()
-}
-
 pub fn ack_post(post_id: &str, recipient_id: &str) -> Result<()> {
     get().lock().unwrap().execute(
         "UPDATE post_deliveries SET delivered = 1

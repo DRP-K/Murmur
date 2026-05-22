@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   Identity, Friend, Message, Post,
   AnonThread, AnonMessage, Conversation,
@@ -6,6 +7,19 @@ import {
 import { browserCmd, initBackend } from "./backend/backend";
 
 const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+/** Subscribe to a named event from either the Tauri runtime or the browser relay client.
+ *  Returns an unsubscribe function suitable for useEffect cleanup. */
+export function onEvent<T>(name: string, cb: (payload: T) => void): () => void {
+  if (isTauri) {
+    let off: (() => void) | null = null;
+    listen<T>(name, (e) => cb(e.payload)).then((fn) => { off = fn; });
+    return () => { off?.(); };
+  }
+  const handler = (e: Event) => cb((e as CustomEvent<T>).detail);
+  window.addEventListener(name, handler);
+  return () => window.removeEventListener(name, handler);
+}
 
 if (!isTauri) {
   initBackend().catch(console.error);

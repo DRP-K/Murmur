@@ -107,11 +107,6 @@ struct SendMessageReq {
 fn default_dm() -> String { "dm".into() }
 
 #[derive(Deserialize)]
-struct AckReq {
-    message_id: String,
-}
-
-#[derive(Deserialize)]
 struct PublishPostReq {
     id: String,
     content: String,
@@ -129,6 +124,13 @@ struct AckPostReq {
 struct AddFriendReq {
     friend_id: String,
     friend_pubkey_hex: String,
+}
+
+#[derive(Deserialize)]
+struct ReactReq {
+    post_id: String,
+    emoji: String,
+    action: String, // "add" | "remove"
 }
 
 #[derive(Deserialize)]
@@ -297,6 +299,15 @@ async fn add_friend(
     Ok(Json(serde_json::json!({"ok": true})))
 }
 
+async fn react_to_post(
+    headers: HeaderMap,
+    Json(body): Json<ReactReq>,
+) -> Result<impl IntoResponse, Response> {
+    let user_id = authed(&headers)?;
+    info!("reaction {} {} on post {} by {}", body.action, body.emoji, body.post_id, user_id);
+    Ok(Json(serde_json::json!({"ok": true})))
+}
+
 async fn ws_handler(
     ws: WebSocketUpgrade,
     Query(q): Query<WsQuery>,
@@ -410,6 +421,7 @@ async fn main() {
         .route("/api/posts",              get(get_pending_posts))
         .route("/api/posts/ack",          post(ack_post_handler))
         .route("/api/friends",            post(add_friend))
+        .route("/api/reactions",          post(react_to_post))
         .route("/api/ws",                 get(ws_handler))
         .layer(cors)
         .with_state(AppState);

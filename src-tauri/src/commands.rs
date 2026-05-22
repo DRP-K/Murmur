@@ -97,7 +97,7 @@ struct QrPayload {
 #[tauri::command]
 pub fn get_or_create_identity() -> Result<Identity, String> {
     let db = db::get().lock().unwrap();
-    let result: ::Result<Identity> = db.query_row(
+    let result: rusqlite::Result<Identity> = db.query_row(
         "SELECT user_id, pubkey_hex, display_name FROM identity LIMIT 1",
         [],
         |row| {
@@ -519,9 +519,9 @@ pub fn reach_out_anon(post_id: String, first_message: String) -> Result<AnonThre
 
     // Thread ID = hash of post_id + ephemeral pub
     let mut h = sha2::Sha256::new();
-    sha2::Digest::update(&mut h, post_id.as_bytes());
-    sha2::Digest::update(&mut h, pub_hex.as_bytes());
-    let thread_id = hex::encode(&sha2::Digest::finalize(h)[..16]);
+    h.update(post_id.as_bytes());
+    h.update(pub_hex.as_bytes());
+    let thread_id = hex::encode(&h.finalize()[..16]);
 
     let ts = now();
 

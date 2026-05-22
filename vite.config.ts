@@ -10,7 +10,7 @@ export default defineConfig({
     proxy: {
       // Forward /api to the relay server in browser dev mode to avoid CORS
       "/api": {
-        target: process.env.VITE_RELAY_URL ?? "http://127.0.0.1:8080",
+        target: process.env.VITE_RELAY_URL ?? "https://murmur.bajzc.com",
         changeOrigin: true,
       },
     },

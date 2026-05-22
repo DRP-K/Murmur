@@ -4,7 +4,7 @@ import * as storage from "./storage";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const DEFAULT_URL = "http://127.0.0.1:8080";
+const DEFAULT_URL = "https://murmur.bajzc.com";
 
 function serverUrl(): string {
   return (import.meta as any).env?.VITE_RELAY_URL ?? DEFAULT_URL;

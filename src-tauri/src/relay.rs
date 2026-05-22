@@ -43,7 +43,7 @@ fn server() -> String {
     SERVER_URL
         .get()
         .cloned()
-        .unwrap_or_else(|| "http://127.0.0.1:8080".into())
+        .unwrap_or_else(|| "https://murmur.bajzc.com".into())
 }
 
 fn ws_server() -> String {

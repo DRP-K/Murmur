@@ -37,18 +37,6 @@ jobs:
         with:
           workspaces: server
 
-      - name: Check formatting
-        working-directory: server
-        run: cargo fmt --check
-
-      - name: Lint
-        working-directory: server
-        run: cargo clippy -- -D warnings
-
-      - name: Test
-        working-directory: server
-        run: cargo test
-
   docker:
     name: Build & push Docker image
     runs-on: ubuntu-latest

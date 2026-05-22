@@ -210,6 +210,7 @@ async fn get_pending_messages(
     let user_id = authed(&headers)?;
     let msgs = db::pull_pending_messages(&user_id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())?;
+    info!("pull messages for {}: {} pending", user_id, msgs.len());
     Ok(Json(msgs))
 }
 
@@ -264,6 +265,7 @@ async fn get_pending_posts(
     let user_id = authed(&headers)?;
     let posts = db::pull_pending_posts(&user_id, now())
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())?;
+    info!("pull posts for {}: {} pending", user_id, posts.len());
     Ok(Json(posts))
 }
 
@@ -361,7 +363,13 @@ async fn handle_socket(mut socket: WebSocket, user_id: String) {
                     Some(Ok(Message::Ping(p))) => {
                         let _ = socket.send(Message::Pong(p)).await;
                     }
-                    Some(Err(_)) => break,
+                    Some(Ok(Message::Text(t))) => {
+                        info!("WS message from {}: {}", user_id, t);
+                    }
+                    Some(Err(e)) => {
+                        info!("WS error from {}: {}", user_id, e);
+                        break;
+                    }
                     _ => {}
                 }
             }

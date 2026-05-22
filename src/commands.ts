@@ -3,8 +3,15 @@ import {
   Identity, Friend, Message, Post,
   AnonThread, AnonMessage, Conversation,
 } from "./types";
+import { browserCmd, initBackend } from "./backend/backend";
 
-export const cmd = {
+const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+if (!isTauri) {
+  initBackend().catch(console.error);
+}
+
+export const cmd = isTauri ? {
   // Identity
   getOrCreateIdentity: () => invoke<Identity>("get_or_create_identity"),
   setDisplayName: (name: string) => invoke<void>("set_display_name", { name }),
@@ -40,4 +47,4 @@ export const cmd = {
   sendAnonMessage: (threadId: string, content: string) =>
     invoke<AnonMessage>("send_anon_message", { threadId, content }),
   revealIdentity: (threadId: string) => invoke<void>("reveal_identity", { threadId }),
-};
+} : browserCmd;

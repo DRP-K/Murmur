@@ -10,7 +10,10 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@noble/ciphers": "^2.2.0",
+    "@noble/curves": "^2.2.0",
     "@tauri-apps/api": "^2",
+    "idb": "^8.0.3",
     "jsqr": "^1.4.0",
     "qrcode": "^1.5.4",
     "react": "^19.1.0",

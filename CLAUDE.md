@@ -163,6 +163,36 @@ RELAY_URL=http://localhost:9090 npm run tauri dev
 
 - [x] **Phase 5** — Deleted all three `seed_demo_*` functions and their calls from `db.rs`; delete `~/Library/Application Support/com.socialapp.app/social.db` before next launch to start clean
 
+### Browser (web) backend — TypeScript rewrite
+
+Replace `invoke()` with a pure-TS backend so the app runs in a plain browser (no Tauri runtime).
+
+**New files under `src/backend/`:**
+
+| File | Purpose |
+|---|---|
+| `crypto.ts` | `@noble/curves` (Ed25519 + X25519) + `@noble/ciphers` (ChaCha20-Poly1305) |
+| `storage.ts` | IndexedDB via `idb` — mirrors SQLite schema |
+| `relay-client.ts` | `fetch` + `WebSocket` — mirrors `relay.rs` |
+| `backend.ts` | All 17 commands, same signatures as Tauri commands |
+
+**`src/commands.ts`** detects `"__TAURI_INTERNALS__" in window` and selects the Tauri or TS backend at runtime.
+
+**npm packages added:** `@noble/curves`, `@noble/ciphers`, `idb`
+
+**Critical implementation notes:**
+- `derive_shared_secret`: SHA256 both keys before X25519 DH (matches Rust's custom scheme in `crypto.rs`)
+- `user_id`: `SHA256(pubkey_bytes)[0..16]` hex-encoded
+- `thread_id` (anon): `SHA256(post_id_utf8 + pub_hex_utf8)[0..16]` hex-encoded
+- `convo_id`: sort both user IDs, join with `-`
+- `from_author` in `send_anon_message`: `!is_initiator` (inverted — matches Rust logic)
+- Messages currently sent as plaintext hex on the wire (real E2E encryption is a future phase)
+- Vite dev proxy: `/api` → `http://127.0.0.1:8080` to avoid CORS in development
+
+- [ ] **Phase 6** — `src/backend/crypto.ts` + `storage.ts`
+- [ ] **Phase 7** — `src/backend/relay-client.ts`
+- [ ] **Phase 8** — `src/backend/backend.ts` + update `src/commands.ts`
+
 ---
 
 ## UI Screens

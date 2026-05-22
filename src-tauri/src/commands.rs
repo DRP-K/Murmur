@@ -97,7 +97,7 @@ struct QrPayload {
 #[tauri::command]
 pub fn get_or_create_identity() -> Result<Identity, String> {
     let db = db::get().lock().unwrap();
-    let result: rusqlite::Result<Identity> = db.query_row(
+    let result: ::Result<Identity> = db.query_row(
         "SELECT user_id, pubkey_hex, display_name FROM identity LIMIT 1",
         [],
         |row| {

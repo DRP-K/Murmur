@@ -17,6 +17,9 @@ pub fn init(path: &str) -> Result<()> {
 }
 
 fn create_tables(conn: &Connection) -> Result<()> {
+    // Migrate existing databases that predate the note column
+    let _ = conn.execute("ALTER TABLE friends ADD COLUMN note TEXT", []);
+
     conn.execute_batch("
         CREATE TABLE IF NOT EXISTS identity (
             user_id      TEXT PRIMARY KEY,
@@ -33,7 +36,8 @@ fn create_tables(conn: &Connection) -> Result<()> {
             nickname      TEXT,
             relay_address TEXT,
             added_at      INTEGER NOT NULL,
-            blocked_at    INTEGER
+            blocked_at    INTEGER,
+            note          TEXT
         );
 
         CREATE TABLE IF NOT EXISTS messages (

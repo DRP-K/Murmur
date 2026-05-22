@@ -64,6 +64,9 @@ function FriendRow({ friend }: { friend: Friend }) {
         <p className="font-medium text-gray-900 text-sm">
           {friend.nickname ?? friend.user_id.slice(0, 12)}
         </p>
+        {friend.note ? (
+          <p className="text-xs text-indigo-500 truncate">{friend.note}</p>
+        ) : null}
         <p className="text-xs text-gray-400">Added {timeAgo(friend.added_at)}</p>
       </div>
     </div>

@@ -12,7 +12,8 @@ export const cmd = {
 
   // Friends
   getFriends: () => invoke<Friend[]>("get_friends"),
-  addFriendFromQr: (payload: string) => invoke<Friend>("add_friend_from_qr", { payload }),
+  addFriendFromQr: (payload: string, note?: string) =>
+    invoke<Friend>("add_friend_from_qr", { payload, note: note ?? null }),
   setNickname: (userId: string, nickname: string) =>
     invoke<void>("set_nickname", { userId, nickname }),
   blockFriend: (userId: string) => invoke<void>("block_friend", { userId }),

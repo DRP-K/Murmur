@@ -27,6 +27,7 @@ pub struct Friend {
     pub nickname: Option<String>,
     pub added_at: i64,
     pub blocked_at: Option<i64>,
+    pub note: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -167,7 +168,7 @@ pub fn get_qr_payload() -> Result<String, String> {
 pub fn get_friends() -> Result<Vec<Friend>, String> {
     let db = db::get().lock().unwrap();
     let mut stmt = db
-        .prepare("SELECT user_id, nickname, added_at, blocked_at FROM friends WHERE blocked_at IS NULL ORDER BY added_at DESC")
+        .prepare("SELECT user_id, nickname, added_at, blocked_at, note FROM friends WHERE blocked_at IS NULL ORDER BY added_at DESC")
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([], |row| {
@@ -176,6 +177,7 @@ pub fn get_friends() -> Result<Vec<Friend>, String> {
                 nickname: row.get(1)?,
                 added_at: row.get(2)?,
                 blocked_at: row.get(3)?,
+                note: row.get(4)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -183,7 +185,7 @@ pub fn get_friends() -> Result<Vec<Friend>, String> {
 }
 
 #[tauri::command]
-pub fn add_friend_from_qr(payload: String) -> Result<Friend, String> {
+pub fn add_friend_from_qr(payload: String, note: Option<String>) -> Result<Friend, String> {
     let qr: QrPayload = serde_json::from_str(&payload).map_err(|e| e.to_string())?;
     let db = db::get().lock().unwrap();
 
@@ -201,14 +203,15 @@ pub fn add_friend_from_qr(payload: String) -> Result<Friend, String> {
     }
 
     let shared = crypto::derive_shared_secret(&our_privkey, &qr.pubkey_hex);
+    let trimmed_note = note.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned);
 
     db.execute(
-        "INSERT OR REPLACE INTO friends (user_id, pubkey_hex, dh_shared_hex, nickname, relay_address, added_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT OR REPLACE INTO friends (user_id, pubkey_hex, dh_shared_hex, nickname, relay_address, added_at, note)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             qr.user_id, qr.pubkey_hex, shared,
             qr.nickname.as_deref().or(Some(&qr.user_id[..8])),
-            qr.relay_address, now()
+            qr.relay_address, now(), trimmed_note.clone()
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -228,6 +231,7 @@ pub fn add_friend_from_qr(payload: String) -> Result<Friend, String> {
         nickname: qr.nickname,
         added_at: now(),
         blocked_at: None,
+        note: trimmed_note,
     })
 }
 

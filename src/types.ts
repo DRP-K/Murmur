@@ -9,6 +9,7 @@ export interface Friend {
   nickname: string | null;
   added_at: number;
   blocked_at: number | null;
+  note: string | null;
 }
 
 export interface Message {

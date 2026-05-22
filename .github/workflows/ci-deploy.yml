@@ -66,31 +66,3 @@ jobs:
           cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
           cache-to:   type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
 
-  deploy:
-    name: Deploy to VPS
-    runs-on: ubuntu-latest
-    needs: docker
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-      - uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-      - name: Add known_hosts
-        run: |
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          if [ -n "${{ secrets.SSH_KNOWN_HOSTS }}" ]; then
-            printf '%s\n' "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
-          else
-            ssh-keyscan -p "${{ vars.SSH_PORT }}" "${{ vars.SSH_HOST }}" >> ~/.ssh/known_hosts
-          fi
-          chmod 644 ~/.ssh/known_hosts
-
-      - name: Pull & restart on VPS
-        run: |
-          ssh -p "${{ vars.SSH_PORT }}" "${{ vars.SSH_USER }}@${{ vars.SSH_HOST }}" \
-            "cd '${{ vars.COMPOSE_DIR }}' \
-             && docker compose pull \
-             && docker compose up -d --remove-orphans \
-             && docker image prune -f"

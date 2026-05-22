@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/social-relay
+  IMAGE: ghcr.io/drp-k/social-relay
 
 jobs:
   ci:

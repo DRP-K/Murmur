@@ -483,6 +483,43 @@ fn handle_ws_message(my_id: &str, text: &str) {
                         ).ok();
                     }
                 }
+                "friend_added" => {
+                    // plaintext is the adder's pubkey_hex string
+                    let adder_pubkey = plaintext;
+                    eprintln!("[relay] recv friend_added from={} pubkey={}", sender_id, &adder_pubkey[..adder_pubkey.len().min(16)]);
+
+                    let (our_privkey, our_id) = {
+                        let db = db::get().lock().unwrap();
+                        let privkey: String = db
+                            .query_row("SELECT privkey_hex FROM identity LIMIT 1", [], |r| r.get(0))
+                            .unwrap_or_default();
+                        let uid: String = db
+                            .query_row("SELECT user_id FROM identity LIMIT 1", [], |r| r.get(0))
+                            .unwrap_or_default();
+                        (privkey, uid)
+                    };
+
+                    if sender_id != our_id && !our_privkey.is_empty() {
+                        let shared = crate::crypto::derive_shared_secret(&our_privkey, &adder_pubkey);
+                        let nickname = sender_id[..sender_id.len().min(8)].to_owned();
+                        {
+                            let db = db::get().lock().unwrap();
+                            db.execute(
+                                "INSERT OR IGNORE INTO friends
+                                 (user_id, pubkey_hex, dh_shared_hex, nickname, added_at)
+                                 VALUES (?1,?2,?3,?4,?5)",
+                                params![sender_id, adder_pubkey, shared, nickname, ts],
+                            ).ok();
+                        }
+                        eprintln!("[relay] auto-added {} as friend", sender_id);
+                        if let Some(handle) = APP_HANDLE.get() {
+                            handle.emit("friends:new_friend", serde_json::json!({
+                                "user_id": sender_id,
+                                "nickname": nickname,
+                            })).ok();
+                        }
+                    }
+                }
                 _ => {}
             }
         }

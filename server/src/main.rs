@@ -292,10 +292,40 @@ async fn add_friend(
     // Register the friend's pubkey so the server can route messages to them
     db::upsert_user(&body.friend_id, &body.friend_pubkey_hex, now())
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())?;
-    // Record the directed edge user → friend
-    db::add_friendship(&user_id, &body.friend_id, now())
+    // Record both directed edges so either side can route messages
+    let ts = now();
+    db::add_friendship(&user_id, &body.friend_id, ts)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())?;
-    info!("friendship: {} → {}", user_id, body.friend_id);
+    db::add_friendship(&body.friend_id, &user_id, ts)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())?;
+    info!("friendship: {} ↔ {}", user_id, body.friend_id);
+
+    // Notify the friend that they were added, so they can add us back locally.
+    // Payload = our pubkey hex (UTF-8 bytes re-encoded as hex to fit the existing wire format).
+    if let Ok(our_pubkey) = db::get_pubkey(&user_id) {
+        let payload_hex = hex::encode(our_pubkey.as_bytes());
+        let nonce_hex = "0".repeat(24);
+        let msg_id = uuid::Uuid::new_v4().to_string();
+
+        db::queue_message(&msg_id, &user_id, &body.friend_id, &payload_hex, &nonce_hex, "friend_added", ts).ok();
+
+        let envelope = serde_json::json!({
+            "type": "message",
+            "id": msg_id,
+            "sender_id": user_id,
+            "payload_hex": payload_hex,
+            "nonce_hex": nonce_hex,
+            "msg_type": "friend_added",
+            "sent_at": ts,
+        });
+        if push_live(&body.friend_id, &envelope.to_string()) {
+            info!("friend_added notification delivered live to {}", body.friend_id);
+            db::ack_message(&msg_id, &body.friend_id).ok();
+        } else {
+            info!("friend_added notification queued for {} (offline)", body.friend_id);
+        }
+    }
+
     Ok(Json(serde_json::json!({"ok": true})))
 }
 

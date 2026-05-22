@@ -12,12 +12,17 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{AppHandle, Emitter};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use futures_util::StreamExt;
 
 pub static SERVER_URL: OnceCell<String> = OnceCell::new();
-static SESSION_TOKEN: OnceCell<Mutex<Option<String>>> =
-    OnceCell::new();
+static SESSION_TOKEN: OnceCell<Mutex<Option<String>>> = OnceCell::new();
+static APP_HANDLE: OnceCell<AppHandle> = OnceCell::new();
+
+pub fn set_app_handle(h: AppHandle) {
+    APP_HANDLE.set(h).ok();
+}
 
 fn token() -> Option<String> {
     SESSION_TOKEN
@@ -240,6 +245,17 @@ struct WsEnvelope {
 /// Spawn a background task that maintains the WebSocket and writes
 /// incoming messages / posts directly into the local SQLite DB.
 pub fn spawn_ws_listener(user_id: String) {
+    // Periodic HTTP poll fallback (every 60 s)
+    let poll_id = user_id.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+            if let Err(e) = poll_messages(&poll_id).await {
+                eprintln!("[relay] poll_messages error: {e}");
+            }
+        }
+    });
+
     tokio::spawn(async move {
         loop {
             if let Some(tok) = token() {
@@ -264,6 +280,62 @@ pub fn spawn_ws_listener(user_id: String) {
     });
 }
 
+// ── HTTP poll fallback ────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct PendingMsg {
+    id: String,
+    sender_id: String,
+    payload_hex: String,
+    nonce_hex: String,
+    msg_type: String,
+    sent_at: i64,
+}
+
+/// Pull any pending messages from the server via HTTP and process them.
+/// Used as a 60-second fallback in case the WS connection misses something.
+pub async fn poll_messages(my_id: &str) -> Result<(), String> {
+    let tok = token().ok_or("not authenticated")?;
+    let client = reqwest::Client::new();
+
+    let msgs: Vec<PendingMsg> = client
+        .get(format!("{}/api/messages", server()))
+        .bearer_auth(&tok)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !msgs.is_empty() {
+        eprintln!("[relay] poll: {} pending message(s)", msgs.len());
+    }
+    for m in msgs {
+        eprintln!("[relay] poll  msg id={} from={} type={}", m.id, m.sender_id, m.msg_type);
+        let envelope = serde_json::json!({
+            "type": "message",
+            "id": m.id,
+            "sender_id": m.sender_id,
+            "payload_hex": m.payload_hex,
+            "nonce_hex": m.nonce_hex,
+            "msg_type": m.msg_type,
+            "sent_at": m.sent_at,
+        })
+        .to_string();
+        handle_ws_message(my_id, &envelope);
+
+        // Ack the message so the server removes it from the queue
+        client
+            .delete(format!("{}/api/messages/{}", server(), m.id))
+            .bearer_auth(&tok)
+            .send()
+            .await
+            .ok();
+    }
+    Ok(())
+}
+
 fn handle_ws_message(my_id: &str, text: &str) {
     let env: WsEnvelope = match serde_json::from_str(text) {
         Ok(e) => e,
@@ -284,22 +356,40 @@ fn handle_ws_message(my_id: &str, text: &str) {
                 .and_then(|b| String::from_utf8(b).ok())
                 .unwrap_or(payload_hex);
 
-            let db = db::get().lock().unwrap();
             match msg_type.as_str() {
                 "dm" => {
                     let mut parts = [sender_id.as_str(), my_id];
                     parts.sort();
                     let convo_id = parts.join("-");
-                    db.execute(
-                        "INSERT OR IGNORE INTO messages
-                         (id, conversation_id, sender_id, plaintext, timestamp, status)
-                         VALUES (?1,?2,?3,?4,?5,'delivered')",
-                        params![id, convo_id, sender_id, plaintext, ts],
-                    ).ok();
+                    eprintln!("[relay] recv dm  id={} from={} text={:?}", id, sender_id, plaintext);
+                    {
+                        let db = db::get().lock().unwrap();
+                        db.execute(
+                            "INSERT OR IGNORE INTO messages
+                             (id, conversation_id, sender_id, plaintext, timestamp, status)
+                             VALUES (?1,?2,?3,?4,?5,'delivered')",
+                            params![id, convo_id, sender_id, plaintext, ts],
+                        ).ok();
+                    }
+                    if let Some(handle) = APP_HANDLE.get() {
+                        handle.emit("chat:new_message", serde_json::json!({
+                            "friend_id": sender_id,
+                            "message": {
+                                "id": id,
+                                "conversation_id": convo_id,
+                                "sender_id": sender_id,
+                                "plaintext": plaintext,
+                                "timestamp": ts,
+                                "status": "delivered",
+                            }
+                        })).ok();
+                    }
                 }
                 "anon" => {
                     // anon messages carry thread_id as the message id prefix: "<thread_id>|<msg_id>"
+                    eprintln!("[relay] recv anon id={} from={}", id, sender_id);
                     if let Some((thread_id, msg_id)) = id.split_once('|') {
+                        let db = db::get().lock().unwrap();
                         db.execute(
                             "INSERT OR IGNORE INTO anon_messages
                              (id, thread_id, plaintext, from_author, timestamp)
@@ -311,19 +401,42 @@ fn handle_ws_message(my_id: &str, text: &str) {
                 _ => {}
             }
         }
+        "delivered_ack" => {
+            // Server confirmed our message was delivered to the recipient
+            let Some(msg_id) = env.id else { return };
+            eprintln!("[relay] delivered_ack id={}", msg_id);
+            let db = db::get().lock().unwrap();
+            db.execute(
+                "UPDATE messages SET status = 'delivered' WHERE id = ?1",
+                params![msg_id],
+            ).ok();
+        }
         "post" => {
             let Some(id) = env.id else { return };
             let Some(author_id) = env.author_id else { return };
             let Some(content) = env.content else { return };
             let ts = env.timestamp.unwrap_or_else(now);
+            eprintln!("[relay] recv post id={} from={} text={:?}", id, author_id, &content[..content.len().min(40)]);
 
-            let db = db::get().lock().unwrap();
-            db.execute(
-                "INSERT OR IGNORE INTO posts
-                 (id, author_id, content, timestamp, expires_at, is_own)
-                 VALUES (?1,?2,?3,?4,?5,0)",
-                params![id, author_id, content, ts, env.expires_at],
-            ).ok();
+            {
+                let db = db::get().lock().unwrap();
+                db.execute(
+                    "INSERT OR IGNORE INTO posts
+                     (id, author_id, content, timestamp, expires_at, is_own)
+                     VALUES (?1,?2,?3,?4,?5,0)",
+                    params![id, author_id, content, ts, env.expires_at],
+                ).ok();
+            }
+            if let Some(handle) = APP_HANDLE.get() {
+                handle.emit("feed:new_post", serde_json::json!({
+                    "id": id,
+                    "author_id": author_id,
+                    "content": content,
+                    "timestamp": ts,
+                    "expires_at": env.expires_at,
+                    "is_own": false,
+                })).ok();
+            }
         }
         _ => {}
     }

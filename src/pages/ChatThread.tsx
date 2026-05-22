@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { cmd } from "../commands";
 import { Message } from "../types";
 import { useStore } from "../store";
@@ -20,6 +21,22 @@ export default function ChatThread({ friendId, nickname, onBack }: Props) {
 
   useEffect(() => {
     cmd.getMessages(friendId).then(setMessages).catch(console.error);
+  }, [friendId]);
+
+  useEffect(() => {
+    const unlisten = listen<{ friend_id: string; message: Message }>(
+      "chat:new_message",
+      (event) => {
+        if (event.payload.friend_id === friendId) {
+          setMessages((prev) => {
+            const msg = event.payload.message;
+            if (prev.some((m) => m.id === msg.id)) return prev;
+            return [...prev, msg];
+          });
+        }
+      }
+    );
+    return () => { unlisten.then((fn) => fn()); };
   }, [friendId]);
 
   const send = async () => {

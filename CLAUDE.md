@@ -90,6 +90,7 @@ users            -- user_id, pubkey_hex, registered_at
 pending_messages -- id, sender_id, recipient_id, payload_hex, nonce_hex, msg_type, sent_at
 posts            -- id, author_id, content, timestamp, expires_at
 post_deliveries  -- post_id, recipient_id, delivered
+friendships      -- user_a, user_b, created_at  (directed edge; one row per direction)
 ```
 
 ---
@@ -105,6 +106,7 @@ DEL  /api/messages/:id      ack delivery
 POST /api/posts             broadcast post to recipient list
 GET  /api/posts             pull undelivered posts
 POST /api/posts/ack         mark post delivered
+POST /api/friends           register friend pubkey + record directed friendship edge
 WS   /api/ws?token=...      real-time delivery + drain on connect
 ```
 
@@ -125,7 +127,9 @@ cargo run --release
 
 Optional env vars:
 ```bash
-PORT=9090 DATA_DIR=/var/data cargo run --release
+PORT=9090 cargo run --release
+# DATA_DIR defaults to the current directory (server.db written there)
+# DATA_DIR=/some/path cargo run --release  ← directory must already exist
 ```
 
 ### Start the Tauri app
@@ -150,22 +154,11 @@ RELAY_URL=http://localhost:9090 npm run tauri dev
 - [x] Full React UI — Feed, Chats, ChatThread, AnonThread, Friends, AddFriend, Me
 - [x] ChatBubble component — grouping, tails, avatars, timestamps, date separators, status ticks
 - [x] Seed data for demo (friends, posts, messages)
+- [x] **Phase 1** — `get_or_create_identity` spawns `relay::bootstrap` on first-time identity creation
+- [x] **Phase 2** — `add_friend_from_qr` calls `relay::notify_friendship` after local DB insert; server records `friendships` edge and upserts friend pubkey via `POST /api/friends`
+- [x] **Phase 3** — `handle_ws_message` emits `chat:new_message` and `feed:new_post` Tauri events; `ChatThread.tsx` listens and appends live; server pushes `delivered_ack` back to sender; `poll_messages()` runs every 60 s as HTTP fallback
 
 ### Backend integration plan (next)
-
-**Phase 1 — Auth bootstrap on identity creation**
-- [ ] `get_or_create_identity` must call `relay::bootstrap` after first-time INSERT (currently only runs at startup if identity already exists)
-- [ ] Extract shared `try_bootstrap()` helper used by both `lib.rs` and `commands.rs`
-
-**Phase 2 — Friend adding**
-- [ ] After `add_friend_from_qr` writes to local DB, call `relay::register_user(friend_id, friend_pubkey)` so server knows their pubkey for routing
-- [ ] Add `POST /api/friends` server endpoint + `friendships` table so server can validate post recipients and support server-side fan-out
-
-**Phase 3 — Chat delivery**
-- [ ] Emit Tauri event `chat:new_message { friend_id, message }` from `handle_ws_message` so frontend updates without polling
-- [ ] Listen for `chat:new_message` in `ChatThread.tsx` → append to local state
-- [ ] Add `relay::poll_messages()` (HTTP GET `/api/messages`) called on reconnect + every 60 s as fallback
-- [ ] Server sends delivery ack back to sender's WS → update `status` to `'delivered'` in local DB
 
 **Phase 4 — Feed delivery**
 - [ ] Emit Tauri event `feed:new_post { post }` from `handle_ws_message`

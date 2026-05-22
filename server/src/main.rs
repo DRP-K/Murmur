@@ -191,8 +191,13 @@ async fn send_message(
         "sent_at": now(),
     });
     if push_live(&body.recipient_id, &envelope.to_string()) {
-        // Delivered live — remove from queue
+        info!("msg {} from {} → {} delivered live", id, sender_id, body.recipient_id);
+        // Delivered live — remove from queue and ack back to sender
         db::ack_message(&id, &body.recipient_id).ok();
+        let ack = serde_json::json!({"type": "delivered_ack", "id": id});
+        push_live(&sender_id, &ack.to_string());
+    } else {
+        info!("msg {} from {} → {} queued (offline)", id, sender_id, body.recipient_id);
     }
 
     Ok(Json(serde_json::json!({"id": id})))
@@ -300,6 +305,9 @@ async fn handle_socket(mut socket: WebSocket, user_id: String) {
 
     // Drain any pending messages and posts on connect
     if let Ok(msgs) = db::pull_pending_messages(&user_id) {
+        if !msgs.is_empty() {
+            info!("draining {} queued message(s) to {}", msgs.len(), user_id);
+        }
         for m in msgs {
             let env = serde_json::json!({
                 "type": "message",

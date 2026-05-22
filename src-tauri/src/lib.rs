@@ -16,6 +16,8 @@ pub fn run() {
             let db_path = data_dir.join("social.db");
             db::init(db_path.to_str().unwrap()).expect("failed to open DB");
 
+            relay::set_app_handle(app.handle().clone());
+
             // Optionally override server URL via env var
             if let Ok(url) = std::env::var("RELAY_URL") {
                 relay::SERVER_URL.set(url).ok();

@@ -410,7 +410,7 @@ async fn main() {
         .ok()
         .and_then(|p| p.parse().ok())
         .unwrap_or(8080);
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
     info!("listening on http://{}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();

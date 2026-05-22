@@ -46,6 +46,7 @@ pub fn run() {
             get_qr_payload,
             get_friends,
             add_friend_from_qr,
+            add_friend_by_id,
             set_nickname,
             block_friend,
             get_conversations,

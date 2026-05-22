@@ -225,6 +225,28 @@ pub async fn notify_friendship(friend_id: &str, friend_pubkey_hex: &str) -> Resu
     Ok(())
 }
 
+// ── User lookup ───────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct UserInfo {
+    user_id: String,
+    pubkey_hex: String,
+}
+
+pub async fn lookup_user(user_id: &str) -> Result<(String, String), String> {
+    let tok = token().ok_or("not authenticated")?;
+    let info: UserInfo = reqwest::Client::new()
+        .get(format!("{}/api/users/{}", server(), user_id))
+        .bearer_auth(tok)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok((info.user_id, info.pubkey_hex))
+}
+
 // ── Incoming (WebSocket listener) ─────────────────────────────────────────────
 
 #[derive(Deserialize)]

@@ -95,6 +95,10 @@ export async function reactToPost(postId: string, emoji: string, action: "add" |
   await apiFetch("POST", "/api/reactions", { post_id: postId, emoji, action });
 }
 
+export async function lookupUser(userId: string): Promise<{ user_id: string; pubkey_hex: string }> {
+  return apiFetch("GET", `/api/users/${encodeURIComponent(userId)}`);
+}
+
 export async function notifyFriendship(
   friendId: string,
   friendPubkeyHex: string

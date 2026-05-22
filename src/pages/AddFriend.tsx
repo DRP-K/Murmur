@@ -8,7 +8,7 @@ interface Props {
 }
 
 export default function AddFriend({ onBack }: Props) {
-  const [tab, setTab] = useState<"show" | "scan">("show");
+  const [tab, setTab] = useState<"show" | "scan" | "id">("show");
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [userId, setUserId] = useState<string>("");
   const [pendingPayload, setPendingPayload] = useState<string | null>(null);
@@ -149,7 +149,7 @@ export default function AddFriend({ onBack }: Props) {
 
       {/* Tabs */}
       <div className="flex border-b border-gray-200 bg-white shrink-0">
-        {(["show", "scan"] as const).map((t) => (
+        {(["show", "scan", "id"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -159,7 +159,7 @@ export default function AddFriend({ onBack }: Props) {
                 : "border-transparent text-gray-500"
             }`}
           >
-            {t === "show" ? "My QR code" : "Scan QR"}
+            {t === "show" ? "My QR" : t === "scan" ? "Scan QR" : "By ID"}
           </button>
         ))}
       </div>
@@ -198,7 +198,71 @@ export default function AddFriend({ onBack }: Props) {
             <p className="text-sm text-gray-500">Align the QR code in the box</p>
           </div>
         )}
+
+        {tab === "id" && (
+          <AddById onDone={onBack} />
+        )}
       </div>
+    </div>
+  );
+}
+
+function AddById({ onDone }: { onDone: () => void }) {
+  const [inputId, setInputId] = useState("");
+  const [note, setNote] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    const id = inputId.trim();
+    if (!id || adding) return;
+    setAdding(true);
+    setError(null);
+    try {
+      await cmd.addFriendById(id, note.trim() || undefined);
+      onDone();
+    } catch (e) {
+      setError(String(e));
+      setAdding(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center pt-8 px-6 gap-4 w-full max-w-sm mx-auto">
+      <p className="text-sm text-gray-500 text-center">
+        Enter your friend's user ID to add them directly.
+      </p>
+      <div className="w-full">
+        <label className="block text-sm font-medium text-gray-700 mb-1">User ID</label>
+        <input
+          autoFocus
+          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-indigo-300"
+          placeholder="Paste their ID here…"
+          value={inputId}
+          onChange={(e) => setInputId(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+        />
+      </div>
+      <div className="w-full">
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Where did you meet? <span className="text-gray-400 font-normal">(optional)</span>
+        </label>
+        <input
+          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-300"
+          placeholder="e.g. Fresher's Fair…"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+        />
+      </div>
+      {error && <p className="text-xs text-red-500 text-center">{error}</p>}
+      <button
+        onClick={submit}
+        disabled={!inputId.trim() || adding}
+        className="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium disabled:opacity-40"
+      >
+        {adding ? "Looking up…" : "Add Friend"}
+      </button>
     </div>
   );
 }

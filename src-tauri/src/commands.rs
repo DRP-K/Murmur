@@ -236,6 +236,51 @@ pub fn add_friend_from_qr(payload: String, note: Option<String>) -> Result<Frien
 }
 
 #[tauri::command]
+pub async fn add_friend_by_id(user_id: String, note: Option<String>) -> Result<Friend, String> {
+    let (uid, pubkey_hex) = relay::lookup_user(&user_id).await?;
+
+    let db = db::get().lock().unwrap();
+    let our_privkey: String = db
+        .query_row("SELECT privkey_hex FROM identity LIMIT 1", [], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+    let our_id: String = db
+        .query_row("SELECT user_id FROM identity LIMIT 1", [], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+
+    if uid == our_id {
+        return Err("Cannot add yourself".into());
+    }
+
+    let shared = crypto::derive_shared_secret(&our_privkey, &pubkey_hex);
+    let trimmed_note = note.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned);
+    let nickname = uid[..uid.len().min(8)].to_owned();
+
+    db.execute(
+        "INSERT OR REPLACE INTO friends (user_id, pubkey_hex, dh_shared_hex, nickname, relay_address, added_at, note)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![uid, pubkey_hex, shared, nickname, Option::<String>::None, now(), trimmed_note.clone()],
+    )
+    .map_err(|e| e.to_string())?;
+    drop(db);
+
+    let fid = uid.clone();
+    let fpub = pubkey_hex.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = relay::notify_friendship(&fid, &fpub).await {
+            eprintln!("[relay] notify_friendship failed: {e}");
+        }
+    });
+
+    Ok(Friend {
+        user_id: uid,
+        nickname: Some(nickname),
+        added_at: now(),
+        blocked_at: None,
+        note: trimmed_note,
+    })
+}
+
+#[tauri::command]
 pub fn set_nickname(user_id: String, nickname: String) -> Result<(), String> {
     let db = db::get().lock().unwrap();
     db.execute(

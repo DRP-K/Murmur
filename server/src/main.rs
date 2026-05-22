@@ -308,6 +308,17 @@ async fn react_to_post(
     Ok(Json(serde_json::json!({"ok": true})))
 }
 
+async fn get_user(
+    headers: HeaderMap,
+    Path(user_id): Path<String>,
+) -> Result<impl IntoResponse, Response> {
+    let _ = authed(&headers)?;
+    let pubkey = db::get_pubkey(&user_id)
+        .map_err(|_| (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "user not found"}))).into_response())?;
+    info!("user lookup: {}", user_id);
+    Ok(Json(serde_json::json!({ "user_id": user_id, "pubkey_hex": pubkey })))
+}
+
 async fn ws_handler(
     ws: WebSocketUpgrade,
     Query(q): Query<WsQuery>,
@@ -422,6 +433,7 @@ async fn main() {
         .route("/api/posts/ack",          post(ack_post_handler))
         .route("/api/friends",            post(add_friend))
         .route("/api/reactions",          post(react_to_post))
+        .route("/api/users/:id",          get(get_user))
         .route("/api/ws",                 get(ws_handler))
         .layer(cors)
         .with_state(AppState);

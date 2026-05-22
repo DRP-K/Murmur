@@ -124,6 +124,16 @@ async function addFriendFromQr(payload: string, note?: string | null): Promise<F
   };
 }
 
+async function addFriendById(userId: string, note?: string | null): Promise<Friend> {
+  const info = await relay.lookupUser(userId);
+  return addFriendFromQr(JSON.stringify({
+    user_id: info.user_id,
+    pubkey_hex: info.pubkey_hex,
+    relay_address: null,
+    nickname: null,
+  }), note);
+}
+
 async function setNickname(userId: string, nickname: string): Promise<void> {
   await storage.setFriendNickname(userId, nickname);
 }
@@ -316,6 +326,7 @@ export const browserCmd = {
   getQrPayload,
   getFriends,
   addFriendFromQr,
+  addFriendById,
   setNickname,
   blockFriend,
   getConversations,

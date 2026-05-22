@@ -164,6 +164,7 @@ async fn authenticate(
         .map_err(|e| (StatusCode::UNAUTHORIZED, e).into_response())?;
 
     let token = auth::create_session(&body.user_id);
+    info!("auth ok: {}", body.user_id);
     Ok(Json(AuthResp { token }))
 }
 
@@ -219,6 +220,7 @@ async fn ack_message_handler(
     let user_id = authed(&headers)?;
     db::ack_message(&id, &user_id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())?;
+    info!("ack msg {} by {}", id, user_id);
     Ok(Json(serde_json::json!({"ok": true})))
 }
 
@@ -233,6 +235,8 @@ async fn publish_post(
     )
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())?;
 
+    info!("post {} from {} → {} recipient(s)", body.id, author_id, body.recipient_ids.len());
+
     // Push to any online recipients
     let envelope = serde_json::json!({
         "type": "post",
@@ -244,7 +248,10 @@ async fn publish_post(
     });
     for rid in &body.recipient_ids {
         if push_live(rid, &envelope.to_string()) {
+            info!("post {} delivered live to {}", body.id, rid);
             db::ack_post(&body.id, rid).ok();
+        } else {
+            info!("post {} queued for {} (offline)", body.id, rid);
         }
     }
 
@@ -267,6 +274,7 @@ async fn ack_post_handler(
     let user_id = authed(&headers)?;
     db::ack_post(&body.post_id, &user_id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())?;
+    info!("ack post {} by {}", body.post_id, user_id);
     Ok(Json(serde_json::json!({"ok": true})))
 }
 

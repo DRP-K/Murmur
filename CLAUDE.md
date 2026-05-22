@@ -157,13 +157,9 @@ RELAY_URL=http://localhost:9090 npm run tauri dev
 - [x] **Phase 1** — `get_or_create_identity` spawns `relay::bootstrap` on first-time identity creation
 - [x] **Phase 2** — `add_friend_from_qr` calls `relay::notify_friendship` after local DB insert; server records `friendships` edge and upserts friend pubkey via `POST /api/friends`
 - [x] **Phase 3** — `handle_ws_message` emits `chat:new_message` and `feed:new_post` Tauri events; `ChatThread.tsx` listens and appends live; server pushes `delivered_ack` back to sender; `poll_messages()` runs every 60 s as HTTP fallback
+- [x] **Phase 4** — `Feed.tsx` listens for `feed:new_post` and prepends live; `poll_posts()` runs every 60 s as HTTP fallback alongside `poll_messages()`
 
 ### Backend integration plan (next)
-
-**Phase 4 — Feed delivery**
-- [ ] Emit Tauri event `feed:new_post { post }` from `handle_ws_message`
-- [ ] Listen for `feed:new_post` in `Feed.tsx` → prepend to feed state
-- [ ] Trigger `get_feed()` refresh after WS drain completes on reconnect
 
 **Phase 5 — Remove dummy data**
 - [ ] Delete `seed_demo_friends()`, `seed_demo_posts()`, `seed_demo_messages()` from `db.rs`

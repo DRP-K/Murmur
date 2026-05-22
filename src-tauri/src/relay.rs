@@ -111,6 +111,7 @@ pub async fn login(user_id: &str, pubkey_hex: &str, privkey_hex: &str) -> Result
         .await
         .map_err(|e| e.to_string())?;
 
+    eprintln!("[relay] login ok: {}", user_id);
     set_token(resp.token.clone());
     Ok(resp.token)
 }
@@ -137,6 +138,7 @@ pub async fn send_message(
     let payload_hex = hex::encode(plaintext.as_bytes());
     let nonce_hex = "0".repeat(24); // placeholder nonce
 
+    eprintln!("[relay] send {} → {} ({} bytes)", msg_type, recipient_id, plaintext.len());
     let client = reqwest::Client::new();
     client
         .post(format!("{}/api/messages", server()))
@@ -253,6 +255,9 @@ pub fn spawn_ws_listener(user_id: String) {
             if let Err(e) = poll_messages(&poll_id).await {
                 eprintln!("[relay] poll_messages error: {e}");
             }
+            if let Err(e) = poll_posts(&poll_id).await {
+                eprintln!("[relay] poll_posts error: {e}");
+            }
         }
     });
 
@@ -311,7 +316,7 @@ pub async fn poll_messages(my_id: &str) -> Result<(), String> {
     if !msgs.is_empty() {
         eprintln!("[relay] poll: {} pending message(s)", msgs.len());
     }
-    for m in msgs {
+    for m in &msgs {
         eprintln!("[relay] poll  msg id={} from={} type={}", m.id, m.sender_id, m.msg_type);
         let envelope = serde_json::json!({
             "type": "message",
@@ -329,6 +334,64 @@ pub async fn poll_messages(my_id: &str) -> Result<(), String> {
         client
             .delete(format!("{}/api/messages/{}", server(), m.id))
             .bearer_auth(&tok)
+            .send()
+            .await
+            .ok();
+    }
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct FeedPost {
+    id: String,
+    author_id: String,
+    content: String,
+    timestamp: i64,
+    expires_at: Option<i64>,
+}
+
+#[derive(Serialize)]
+struct AckPostReq<'a> {
+    post_id: &'a str,
+}
+
+/// Pull any undelivered posts from the server via HTTP and process them.
+/// Used as a 60-second fallback alongside `poll_messages`.
+pub async fn poll_posts(my_id: &str) -> Result<(), String> {
+    let tok = token().ok_or("not authenticated")?;
+    let client = reqwest::Client::new();
+
+    let posts: Vec<FeedPost> = client
+        .get(format!("{}/api/posts", server()))
+        .bearer_auth(&tok)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !posts.is_empty() {
+        eprintln!("[relay] poll: {} pending post(s)", posts.len());
+    }
+    for p in &posts {
+        eprintln!("[relay] poll  post id={} from={} text={:?}", p.id, p.author_id, &p.content[..p.content.len().min(40)]);
+        let envelope = serde_json::json!({
+            "type": "post",
+            "id": p.id,
+            "author_id": p.author_id,
+            "content": p.content,
+            "timestamp": p.timestamp,
+            "expires_at": p.expires_at,
+        })
+        .to_string();
+        handle_ws_message(my_id, &envelope);
+
+        // Ack so server marks it delivered
+        client
+            .post(format!("{}/api/posts/ack", server()))
+            .bearer_auth(&tok)
+            .json(&AckPostReq { post_id: &p.id })
             .send()
             .await
             .ok();

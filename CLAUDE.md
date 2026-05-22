@@ -161,10 +161,7 @@ RELAY_URL=http://localhost:9090 npm run tauri dev
 
 ### Backend integration plan (next)
 
-**Phase 5 — Remove dummy data**
-- [ ] Delete `seed_demo_friends()`, `seed_demo_posts()`, `seed_demo_messages()` from `db.rs`
-- [ ] Remove all three calls from `db::init()`
-- [ ] Delete `~/Library/Application Support/com.socialapp.app/social.db` to start clean
+- [x] **Phase 5** — Deleted all three `seed_demo_*` functions and their calls from `db.rs`; delete `~/Library/Application Support/com.socialapp.app/social.db` before next launch to start clean
 
 ---
 

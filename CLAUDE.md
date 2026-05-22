@@ -1,112 +1,181 @@
-# Social App — Concept & Implementation Plan
+# Social App
 
-## App Concept
+An offline-first social app built with Tauri 2 (Rust + React).
 
-An offline-first social app built with Tauri (Rust backend, web frontend).
+---
 
-### Core Features
+## Core Features
 
-1. **Offline Friend Adding via QR Code**
-   - Generate a QR code containing your user ID / public key
-   - Scan a friend's QR code in person to add them (no server needed for the handshake)
-   - Exchange encrypted contact info peer-to-peer (Bluetooth or local Wi-Fi, or a relay)
-
-2. **Direct Messaging (WhatsApp-style)**
-   - End-to-end encrypted chat with confirmed friends
-   - Messages, media, read receipts
-   - Works over internet once friends are added
-
-3. **Anonymous Feed**
-   - All friends post to a shared feed
-   - Posts show no names or avatars — fully anonymous by default
-   - You can read, react, or reach out to the post author anonymously
-   - If the author replies, a temporary anonymous chat thread opens
-   - Author can choose to reveal identity at any point; so can you
+1. **Offline Friend Adding via QR Code** — generate/scan QR in person, no server needed for the handshake
+2. **Direct Messaging** — WhatsApp-style E2E encrypted chat over a relay
+3. **Anonymous Feed** — friends post without names; react or reach out anonymously; identity reveal is opt-in
 
 ---
 
 ## Tech Stack
 
-| Layer | Choice | Reason |
-|---|---|---|
-| Framework | Tauri 2 (Rust + WebView) | Cross-platform, small binary, Rust safety |
-| Frontend | React + TypeScript + Tailwind | Fast UI dev, good component ecosystem |
-| Backend (local) | Rust (Tauri commands) | Crypto, QR, local DB |
-| Local DB | SQLite via `rusqlite` | Offline-first, embedded |
-| Crypto | `libsodium` / `ring` crate | Key generation, E2E encryption |
-| Networking | `libp2p` or WebSocket relay | P2P or server-relayed messaging |
-| QR Code | `qrcode` crate (backend) + `jsQR` (frontend scan) | Generate + scan in-app |
+| Layer | Choice |
+|---|---|
+| Framework | Tauri 2 (Rust + WebView) |
+| Frontend | React 19 + TypeScript + Tailwind CSS 3 |
+| State | Zustand |
+| Local DB | SQLite via `rusqlite` (bundled) |
+| Crypto | `ed25519-dalek`, `x25519-dalek`, `chacha20poly1305` |
+| Relay server | Rust + Axum + WebSocket (`server/`) |
+| QR generate | `qrcode` npm package |
+| QR scan | `jsQR` + browser camera API |
 
 ---
 
-## Implementation Plan
+## Project Structure
 
-### Phase 1 — Identity & QR Friend Add
-
-- [ ] Generate an Ed25519 keypair on first launch; store in local SQLite
-- [ ] Display own QR code (encodes: `userID`, `pubkey`, `relay address`)
-- [ ] Camera view to scan friend's QR code
-- [ ] Store friend record (`id`, `pubkey`, `nickname`, `added_at`) in SQLite
-- [ ] Tauri commands: `generate_identity`, `get_qr_payload`, `add_friend_from_qr`
-
-### Phase 2 — Encrypted Direct Messaging
-
-- [ ] Key exchange (X25519 ECDH) when friend is first added
-- [ ] Message struct: `{ id, sender, recipient, ciphertext, timestamp, status }`
-- [ ] Local message store in SQLite
-- [ ] Relay server (minimal Rust/Axum WebSocket server) for delivery when both online
-- [ ] Frontend chat UI: conversation list, message thread, send bar
-- [ ] Tauri commands: `send_message`, `get_conversation`, `mark_read`
-
-### Phase 3 — Anonymous Feed
-
-- [ ] Post struct: `{ id, author_id_encrypted, content, timestamp, reactions }`
-- [ ] Author ID encrypted with a symmetric key shared among all friends (group key)
-- [ ] Feed view: show posts with no author info; reactions visible
-- [ ] "Reach out anonymously" button → opens ephemeral anon thread
-  - Thread ID derived from post ID + your ephemeral keypair
-  - Author can see someone messaged them but not who
-- [ ] Identity reveal: both sides can optionally unmask
-- [ ] Tauri commands: `create_post`, `get_feed`, `react_to_post`, `open_anon_thread`
-
-### Phase 4 — Polish & Privacy
-
-- [ ] Notification system (Tauri notifications API)
-- [ ] Post expiry (posts auto-delete after N days)
-- [ ] Block / remove friend
-- [ ] Settings: display name, avatar (shown only to confirmed friends)
-- [ ] Optional: local-only mode (no relay, LAN only via mDNS)
+```
+tauri-app/
+├── index.html
+├── src/                          # React frontend
+│   ├── main.tsx
+│   ├── App.tsx                   # Tab router + identity bootstrap
+│   ├── index.css                 # Tailwind base
+│   ├── types.ts                  # Shared TypeScript types
+│   ├── store.ts                  # Zustand global state
+│   ├── commands.ts               # Typed wrappers for invoke()
+│   ├── components/
+│   │   ├── BottomNav.tsx
+│   │   ├── Header.tsx
+│   │   ├── ChatBubble.tsx        # Shared bubble renderer (grouping, tails, timestamps)
+│   │   ├── MessageInput.tsx      # Auto-grow textarea + send button
+│   │   ├── ComposeModal.tsx      # New post sheet
+│   │   └── ReachOutModal.tsx     # Anonymous contact modal
+│   └── pages/
+│       ├── Feed.tsx
+│       ├── Chats.tsx
+│       ├── ChatThread.tsx
+│       ├── AnonThread.tsx
+│       ├── Friends.tsx
+│       ├── AddFriend.tsx         # QR display + camera scan tabs
+│       └── Me.tsx
+│
+├── src-tauri/src/                # Rust backend (Tauri commands)
+│   ├── lib.rs                    # Builder, DB init, relay bootstrap
+│   ├── main.rs
+│   ├── db.rs                     # SQLite schema + seed data
+│   ├── crypto.rs                 # Keypair gen, ECDH, ephemeral keys
+│   ├── commands.rs               # All 17 Tauri commands
+│   └── relay.rs                  # HTTP + WebSocket client to server/
+│
+└── server/src/                   # Standalone relay server
+    ├── main.rs                   # Axum router, WebSocket handler
+    ├── db.rs                     # Server-side SQLite (pending msgs, posts)
+    └── auth.rs                   # Ed25519 challenge-response, session tokens
+```
 
 ---
 
-## Project Structure (target)
+## Database Schema (local, per device)
+
+```sql
+identity         -- one row: user_id, pubkey_hex, privkey_hex, display_name
+friends          -- user_id, pubkey_hex, dh_shared_hex, nickname, added_at
+messages         -- id, conversation_id, sender_id, plaintext, timestamp, status
+posts            -- id, author_id, content, timestamp, expires_at, is_own
+reactions        -- post_id, emoji, count, reacted_by_me
+anon_threads     -- id, post_id, post_snippet, ephemeral keys, is_initiator, status
+anon_messages    -- id, thread_id, plaintext, from_author, timestamp
+```
+
+## Database Schema (server)
+
+```sql
+users            -- user_id, pubkey_hex, registered_at
+pending_messages -- id, sender_id, recipient_id, payload_hex, nonce_hex, msg_type, sent_at
+posts            -- id, author_id, content, timestamp, expires_at
+post_deliveries  -- post_id, recipient_id, delivered
+```
+
+---
+
+## Server API
 
 ```
-src/                   # Frontend (React + TS)
-  components/
-    QRScanner.tsx
-    QRDisplay.tsx
-    ChatThread.tsx
-    Feed.tsx
-    AnonThread.tsx
-  pages/
-    Friends.tsx
-    Chat.tsx
-    Feed.tsx
-    Settings.tsx
-  store/               # Zustand or Redux state
-
-src-tauri/src/         # Rust backend
-  commands/
-    identity.rs
-    friends.rs
-    messages.rs
-    feed.rs
-  db.rs                # SQLite setup & migrations
-  crypto.rs            # Keypair, encrypt, decrypt
-  relay.rs             # WebSocket client
-  main.rs
+POST /api/register          register pubkey (idempotent)
+POST /api/auth              Ed25519 challenge-response → session token
+POST /api/messages          queue encrypted DM for recipient
+GET  /api/messages          pull pending DMs
+DEL  /api/messages/:id      ack delivery
+POST /api/posts             broadcast post to recipient list
+GET  /api/posts             pull undelivered posts
+POST /api/posts/ack         mark post delivered
+WS   /api/ws?token=...      real-time delivery + drain on connect
 ```
+
+**Auth flow:** client signs `"user_id:unix_timestamp"` with Ed25519 private key → server verifies against stored pubkey → returns UUID session token. Tokens are in-memory; server restart invalidates sessions (client re-auths automatically).
+
+**Offline behaviour:** server queues messages for offline users; WebSocket drain fires on reconnect. App works fully offline — relay push is fire-and-forget.
+
+---
+
+## Running
+
+### Start the relay server
+```bash
+cd server
+cargo run --release
+# → http://127.0.0.1:8080
+```
+
+Optional env vars:
+```bash
+PORT=9090 DATA_DIR=/var/data cargo run --release
+```
+
+### Start the Tauri app
+```bash
+npm run tauri dev
+# Override server URL:
+RELAY_URL=http://localhost:9090 npm run tauri dev
+```
+
+---
+
+## Implementation Status
+
+### Done
+- [x] Ed25519 identity generation on first launch
+- [x] QR code generation (`qrcode` npm) + camera scan (`jsQR`)
+- [x] `add_friend_from_qr` — ECDH shared secret derived on add
+- [x] Local SQLite for all data (offline-first)
+- [x] All 17 Tauri commands (identity, friends, DMs, feed, anon threads)
+- [x] Relay server (Axum + WebSocket) with auth, message queue, post fan-out
+- [x] `relay.rs` client — login, send_message, publish_post, WS listener
+- [x] Full React UI — Feed, Chats, ChatThread, AnonThread, Friends, AddFriend, Me
+- [x] ChatBubble component — grouping, tails, avatars, timestamps, date separators, status ticks
+- [x] Seed data for demo (friends, posts, messages)
+
+### Backend integration plan (next)
+
+**Phase 1 — Auth bootstrap on identity creation**
+- [ ] `get_or_create_identity` must call `relay::bootstrap` after first-time INSERT (currently only runs at startup if identity already exists)
+- [ ] Extract shared `try_bootstrap()` helper used by both `lib.rs` and `commands.rs`
+
+**Phase 2 — Friend adding**
+- [ ] After `add_friend_from_qr` writes to local DB, call `relay::register_user(friend_id, friend_pubkey)` so server knows their pubkey for routing
+- [ ] Add `POST /api/friends` server endpoint + `friendships` table so server can validate post recipients and support server-side fan-out
+
+**Phase 3 — Chat delivery**
+- [ ] Emit Tauri event `chat:new_message { friend_id, message }` from `handle_ws_message` so frontend updates without polling
+- [ ] Listen for `chat:new_message` in `ChatThread.tsx` → append to local state
+- [ ] Add `relay::poll_messages()` (HTTP GET `/api/messages`) called on reconnect + every 60 s as fallback
+- [ ] Server sends delivery ack back to sender's WS → update `status` to `'delivered'` in local DB
+
+**Phase 4 — Feed delivery**
+- [ ] Emit Tauri event `feed:new_post { post }` from `handle_ws_message`
+- [ ] Listen for `feed:new_post` in `Feed.tsx` → prepend to feed state
+- [ ] Trigger `get_feed()` refresh after WS drain completes on reconnect
+
+**Phase 5 — Remove dummy data**
+- [ ] Delete `seed_demo_friends()`, `seed_demo_posts()`, `seed_demo_messages()` from `db.rs`
+- [ ] Remove all three calls from `db::init()`
+- [ ] Delete `~/Library/Application Support/com.socialapp.app/social.db` to start clean
 
 ---
 
@@ -149,8 +218,8 @@ src-tauri/src/         # Rust backend
 │ [Feed]  Chats  Friends   Me  │
 └──────────────────────────────┘
 ```
-- `[+]` opens compose sheet
-- `<3` = like reaction, `~` = resonates reaction
+- `[+]` opens compose sheet (anonymous post)
+- `<3` = like, `~` = resonates
 - `[Reach]` triggers the anon contact modal
 
 ---
@@ -158,8 +227,6 @@ src-tauri/src/         # Rust backend
 ### Screen 2 — Reach out modal
 ```
 ┌──────────────────────────────┐
-│ 9:41                    |||  │
-├──────────────────────────────┤
 │  Feed                   [+] │
 ├──────────────────────────────┤
 │  ┌────────────────────────┐  │
@@ -181,21 +248,16 @@ src-tauri/src/         # Rust backend
 │  ║                        ║  │
 │  ║  [Cancel]    [Send >]  ║  │
 │  ╚════════════════════════╝  │
-│                              │
-├──────────────────────────────┤
-│ [Feed]  Chats  Friends   Me  │
 └──────────────────────────────┘
 ```
-- Thread only appears in both users' Chats if the author replies
-- If author ignores, the initiator never gets a thread (fire-and-forget)
+- Thread only appears in Chats if the author replies
+- Fire-and-forget if author ignores
 
 ---
 
 ### Screen 3 — Anonymous thread
 ```
 ┌──────────────────────────────┐
-│ 9:41                    |||  │
-├──────────────────────────────┤
 │  <  Anonymous thread    [i]  │
 │     re: "got the job" post   │
 ├──────────────────────────────┤
@@ -204,22 +266,13 @@ src-tauri/src/         # Rust backend
 │            ┌───────────────┐ │
 │            │ Your post     │ │
 │            │ made me smile │ │
-│            │ today         │ │
 │            └───────────────┘ │
 │                  you · 10:32 │
-│                              │
 │  ┌────────────────────┐      │
 │  │ Thank you! I was   │      │
 │  │ nervous for months │      │
 │  └────────────────────┘      │
 │  them · 10:45                │
-│                              │
-│            ┌───────────────┐ │
-│            │ You deserve   │ │
-│            │ it :)         │ │
-│            └───────────────┘ │
-│                  you · 10:46 │
-│                              │
 │  ┌────────────────────────┐  │
 │  │  [Reveal your name?]   │  │
 │  └────────────────────────┘  │
@@ -229,20 +282,15 @@ src-tauri/src/         # Rust backend
 │ └──────────────────────┘     │
 └──────────────────────────────┘
 ```
-- `[Reveal your name?]` is a soft banner, not forced — either side can initiate
-- Both must agree before identities are shown
+- `[Reveal your name?]` is soft — either side initiates, both must agree
 
 ---
 
 ### Screen 4 — Chats list
 ```
 ┌──────────────────────────────┐
-│ 9:41                    |||  │
-├──────────────────────────────┤
 │  Chats                       │
 ├──────────────────────────────┤
-│  [Search conversations...]   │
-│                              │
 │  ┌────────────────────────┐  │
 │  │ [A] Alice              │  │
 │  │     hey are you free   │  │
@@ -250,13 +298,7 @@ src-tauri/src/         # Rust backend
 │  └────────────────────────┘  │
 │  ┌────────────────────────┐  │
 │  │ [B] Bob            (3) │  │
-│  │     ok sounds good     │  │
-│  │     to me          1h  │  │
-│  └────────────────────────┘  │
-│  ┌────────────────────────┐  │
-│  │ [C] Carol              │  │
-│  │     haha yes exactly   │  │
-│  │                    3h  │  │
+│  │     ok sounds good 1h  │  │
 │  └────────────────────────┘  │
 │                              │
 │  -- Anonymous threads --     │
@@ -264,80 +306,40 @@ src-tauri/src/         # Rust backend
 │  ┌────────────────────────┐  │
 │  │ [?] "got the job" post │  │
 │  │     You deserve it :)  │  │
-│  │                   10m  │  │
 │  └────────────────────────┘  │
-│                              │
 ├──────────────────────────────┤
 │  Feed  [Chats] Friends   Me  │
 └──────────────────────────────┘
 ```
-- Named DMs at top, anonymous threads in a separate section below
-- `[?]` avatar for anon threads; letter avatar for named friends
 
 ---
 
 ### Screen 5 — Add Friend (QR)
 ```
 ┌──────────────────────────────┐
-│ 9:41                    |||  │
-├──────────────────────────────┤
 │  <  Add Friend               │
 ├──────────────────────────────┤
-│                              │
 │  [ My QR code ] [ Scan QR ] │
 │  ──────────────────────────  │
-│                              │
 │   Show this to your friend:  │
-│                              │
 │   ┌──────────────────────┐   │
 │   │ ▓▓▓  ░▓░▓░░  ░  ▓▓▓ │   │
 │   │ ▓ ▓  ▓░░░░▓  ░  ▓ ▓ │   │
-│   │ ▓ ▓  ░▓▓░░░  ░  ▓ ▓ │   │
-│   │ ▓▓▓  ▓░▓▓▓▓  ░  ▓▓▓ │   │
-│   │ ░░░░░░▓░░▓▓▓░░░░░░░ │   │
-│   │ ▓░▓░░░░▓░░░░░▓▓░░▓▓ │   │
-│   │ ▓▓▓  ░▓░▓░░  ░  ▓ ▓ │   │
-│   │ ▓ ▓  ▓░▓▓░▓  ░  ▓ ▓ │   │
 │   │ ▓▓▓  ░▓░░░▓  ░  ▓▓▓ │   │
 │   └──────────────────────┘   │
-│                              │
 │   Your ID:  a3f9...c7b2      │
 │   [       Copy ID          ] │
-│                              │
 ├──────────────────────────────┤
 │  Feed   Chats [Friends]  Me  │
 └──────────────────────────────┘
-```
-
-Scan tab:
-```
-│  [ My QR code ] [ Scan QR ] │
-│  ──────────────────────────  │
-│                              │
-│   ┌──────────────────────┐   │
-│   │                      │   │
-│   │    (camera feed)     │   │
-│   │                      │   │
-│   │   - - - - - - - - -  │   │
-│   │  |                 | │   │
-│   │  |   align here    | │   │
-│   │  |                 | │   │
-│   │   - - - - - - - - -  │   │
-│   │                      │   │
-│   └──────────────────────┘   │
-│                              │
-│  Or enter ID manually:       │
-│  ┌────────────────────────┐  │
-│  │ Paste friend's ID...   │  │
-│  └────────────────────────┘  │
-│  [       Add Friend        ] │
 ```
 
 ---
 
 ## Key Design Decisions
 
-- **Offline-first**: all data lives in local SQLite; relay is only for delivery
-- **No phone number or email required**: identity is a keypair, shared via QR
-- **Feed anonymity**: enforced cryptographically, not just by UI policy
-- **Anonymous contact**: ephemeral keypairs mean even the relay can't correlate sender to identity
+- **Offline-first**: all data lives in local SQLite; relay is delivery-only
+- **No account required**: identity is an Ed25519 keypair, shared via QR
+- **Feed anonymity is UI-level on your own device** (you know who your friends are); cryptographic anonymity applies to the anon-contact flow where the *author* genuinely cannot identify who reached out (ephemeral keypairs)
+- **Fire-and-forget relay**: failed relay pushes are silently dropped; server queues for offline recipients
+- **Reactions are local-only** for now (no server sync needed)

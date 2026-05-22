@@ -1,9 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { cmd } from "../commands";
 import { useStore } from "../store";
 import Header from "../components/Header";
-import ChatThread from "./ChatThread";
-import AnonThread from "./AnonThread";
 import { Conversation, AnonThread as AnonThreadType } from "../types";
 
 function timeAgo(ts: number | null): string {
@@ -21,44 +19,30 @@ function initials(name: string | null): string {
 }
 
 export default function ChatsPage() {
-  const { conversations, setConversations, anonThreads, setAnonThreads } = useStore();
-  const [openConvo, setOpenConvo] = useState<string | null>(null);
-  const [openAnon, setOpenAnon] = useState<AnonThreadType | null>(null);
+  const { conversations, setConversations, anonThreads, setAnonThreads, pushNav } = useStore();
 
   useEffect(() => {
     cmd.getConversations().then(setConversations).catch(console.error);
     cmd.getAnonThreads().then(setAnonThreads).catch(console.error);
   }, [setConversations, setAnonThreads]);
 
-  if (openConvo) {
-    return (
-      <ChatThread
-        friendId={openConvo}
-        nickname={conversations.find((c) => c.friend_id === openConvo)?.nickname ?? null}
-        onBack={() => setOpenConvo(null)}
-      />
-    );
-  }
-
-  if (openAnon) {
-    return <AnonThread thread={openAnon} onBack={() => setOpenAnon(null)} />;
-  }
-
   return (
     <div className="flex flex-col h-full">
       <Header title="Chats" />
       <div className="flex-1 overflow-y-auto pb-16">
-        {/* DMs */}
         {conversations.length === 0 && anonThreads.length === 0 && (
           <p className="text-center text-gray-400 text-sm mt-16">
             No chats yet. Add a friend to start messaging.
           </p>
         )}
         {conversations.map((c) => (
-          <ConvoRow key={c.friend_id} convo={c} onClick={() => setOpenConvo(c.friend_id)} />
+          <ConvoRow
+            key={c.friend_id}
+            convo={c}
+            onClick={() => pushNav({ type: "chat", friendId: c.friend_id, nickname: c.nickname ?? null })}
+          />
         ))}
 
-        {/* Anon threads */}
         {anonThreads.length > 0 && (
           <>
             <div className="px-4 pt-5 pb-2">
@@ -67,7 +51,7 @@ export default function ChatsPage() {
               </span>
             </div>
             {anonThreads.map((t) => (
-              <AnonRow key={t.id} thread={t} onClick={() => setOpenAnon(t)} />
+              <AnonRow key={t.id} thread={t} onClick={() => pushNav({ type: "anon", thread: t })} />
             ))}
           </>
         )}

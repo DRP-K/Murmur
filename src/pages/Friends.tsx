@@ -1,9 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { cmd } from "../commands";
 import { Friend } from "../types";
 import { useStore } from "../store";
 import Header from "../components/Header";
-import AddFriend from "./AddFriend";
 
 function timeAgo(ts: number): string {
   const diff = Date.now() / 1000 - ts;
@@ -13,23 +12,11 @@ function timeAgo(ts: number): string {
 }
 
 export default function FriendsPage() {
-  const { friends, setFriends } = useStore();
-  const [adding, setAdding] = useState(false);
+  const { friends, setFriends, pushNav } = useStore();
 
   useEffect(() => {
     cmd.getFriends().then(setFriends).catch(console.error);
   }, [setFriends]);
-
-  if (adding) {
-    return (
-      <AddFriend
-        onBack={() => {
-          setAdding(false);
-          cmd.getFriends().then(setFriends).catch(console.error);
-        }}
-      />
-    );
-  }
 
   return (
     <div className="flex flex-col h-full">
@@ -37,7 +24,7 @@ export default function FriendsPage() {
         title="Friends"
         action={
           <button
-            onClick={() => setAdding(true)}
+            onClick={() => pushNav({ type: "add-friend" })}
             className="text-sm text-indigo-600 font-medium hover:text-indigo-700"
           >
             + Add
@@ -51,7 +38,7 @@ export default function FriendsPage() {
             <p>No friends yet.</p>
             <p className="mt-1">Meet someone and scan their QR code.</p>
             <button
-              onClick={() => setAdding(true)}
+              onClick={() => pushNav({ type: "add-friend" })}
               className="mt-5 px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium"
             >
               Add friend

@@ -101,7 +101,7 @@ export default function ChatBubble({
   let flatIdx = 0;
 
   return (
-    <div className="flex-1 overflow-y-auto px-3 pt-3 pb-4">
+    <div className="flex-1 min-h-0 overflow-y-auto px-3 pt-3 pb-4">
       {groups.map((group, gi) => {
         const firstMsgOfGroup = group.messages[0];
         const prevGroupLast =

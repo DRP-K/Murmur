@@ -1,4 +1,4 @@
-use crate::{crypto, db};
+use crate::{crypto, db, relay};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
@@ -117,6 +117,12 @@ pub fn get_or_create_identity() -> Result<Identity, String> {
                 params![kp.user_id, kp.pubkey_hex, kp.privkey_hex, now()],
             )
             .map_err(|e| e.to_string())?;
+            drop(db);
+            // Bootstrap relay on first launch
+            let (uid, pub_hex, priv_hex) = (kp.user_id.clone(), kp.pubkey_hex.clone(), kp.privkey_hex.clone());
+            tauri::async_runtime::spawn(async move {
+                relay::bootstrap(uid, pub_hex, priv_hex).await;
+            });
             Ok(Identity {
                 user_id: kp.user_id,
                 display_name: None,
@@ -206,10 +212,20 @@ pub fn add_friend_from_qr(payload: String) -> Result<Friend, String> {
         ],
     )
     .map_err(|e| e.to_string())?;
+    drop(db);
+
+    // Tell the server about the friendship so it can route messages
+    let fid = qr.user_id.clone();
+    let fpub = qr.pubkey_hex.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = relay::notify_friendship(&fid, &fpub).await {
+            eprintln!("[relay] notify_friendship failed: {e}");
+        }
+    });
 
     Ok(Friend {
         user_id: qr.user_id,
-        nickname: qr.nickname.or_else(|| None),
+        nickname: qr.nickname,
         added_at: now(),
         blocked_at: None,
     })
@@ -326,6 +342,14 @@ pub fn send_message(friend_id: String, content: String) -> Result<Message, Strin
         params![id, cid, my_id, content, ts],
     )
     .map_err(|e| e.to_string())?;
+    drop(db);
+
+    // Fire-and-forget relay push (non-blocking)
+    let fid = friend_id.clone();
+    let txt = content.clone();
+    tauri::async_runtime::spawn(async move {
+        crate::relay::send_message(&fid, &txt, "dm").await.ok();
+    });
 
     Ok(Message {
         id,
@@ -415,6 +439,14 @@ pub fn create_post(content: String, expires_in_days: Option<i64>) -> Result<Post
         params![id, my_id, content, ts, expires_at],
     )
     .map_err(|e| e.to_string())?;
+    drop(db);
+
+    // Broadcast post to friends via relay (fire-and-forget)
+    let pid = id.clone();
+    let txt = content.clone();
+    tauri::async_runtime::spawn(async move {
+        crate::relay::publish_post(&pid, &txt, ts, expires_at).await.ok();
+    });
 
     Ok(Post {
         id,

@@ -1,25 +1,42 @@
-mod db;
+use murmur_server::app::{AppState, router};
+use tracing::{error, info};
+use tracing_subscriber::EnvFilter;
 
-use db::{establish_connection, run_migrations};
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::from_default_env()
+                .add_directive("murmur_server=info".parse().expect("valid log directive")),
+        )
+        .init();
 
-fn main() {
     let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-        eprintln!("DATABASE_URL must be set");
+        error!("DATABASE_URL must be set");
         std::process::exit(1);
     });
+    let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".to_string());
 
-    let mut conn = match establish_connection(&database_url) {
-        Ok(conn) => conn,
+    let state = match AppState::from_database_url(&database_url) {
+        Ok(state) => state,
         Err(err) => {
-            eprintln!("failed to connect to DB: {err}");
+            error!(error = %err, "failed to initialize DB");
             std::process::exit(1);
         }
     };
 
-    if let Err(err) = run_migrations(&mut conn) {
-        eprintln!("failed to run DB migrations: {err}");
+    let listener = match tokio::net::TcpListener::bind(&bind_addr).await {
+        Ok(listener) => listener,
+        Err(err) => {
+            error!(bind_addr = %bind_addr, error = %err, "failed to bind listener");
+            std::process::exit(1);
+        }
+    };
+
+    info!(bind_addr = %bind_addr, "murmur server listening");
+
+    if let Err(err) = axum::serve(listener, router(state)).await {
+        error!(error = %err, "server error");
         std::process::exit(1);
     }
-
-    println!("murmur server DB initialized");
 }

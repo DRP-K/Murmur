@@ -1,0 +1,19 @@
+services:
+  murmur-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.staged
+    image: ${STAGED_IMAGE:-murmur-server:staged}
+    container_name: ${STAGED_CONTAINER_NAME:-murmur-server-staged}
+    restart: always
+    environment:
+      DATABASE_URL: ${STAGED_DATABASE_URL:-/var/app/data/staged.sqlite3}
+      PORT: ${STAGED_CONTAINER_PORT:-3000}
+      BIND_ADDR: 0.0.0.0:${STAGED_CONTAINER_PORT:-3000}
+    ports:
+      - "${STAGED_HOST_PORT:-3000}:${STAGED_CONTAINER_PORT:-3000}"
+    volumes:
+      - murmur-staged-data:/var/app/data
+
+volumes:
+  murmur-staged-data:

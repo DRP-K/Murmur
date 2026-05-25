@@ -18,7 +18,8 @@ use crate::db::models::{NewPendingMessage, NewPost};
 use crate::db::repository;
 use crate::wire::{
     AckPostRequest, AddFriendRequest, AuthRequest, AuthResponse, CreatePostRequest,
-    MessageListResponse, PostListResponse, RegisterRequest, SendMessageRequest, ServerEnvelope,
+    FriendInfo, FriendListResponse, MessageListResponse, PostListResponse, RegisterRequest,
+    SendMessageRequest, ServerEnvelope,
 };
 
 #[derive(Debug)]
@@ -240,13 +241,10 @@ pub async fn post_post(
 
     for recipient_id in payload.recipient_ids {
         if state.send_to_online(&recipient_id, envelope.clone()) {
-            let mut conn = state.pool.get().map_err(db_error)?;
-            repository::mark_post_delivered(&mut conn, &payload.id, &recipient_id, now_ts())
-                .map_err(db_error)?;
             info!(
                 post_id = %payload.id,
                 recipient_id = %recipient_id,
-                "post delivered live"
+                "post notified live (pending client ack)"
             );
         } else {
             debug!(
@@ -304,11 +302,17 @@ pub async fn add_friend(
     let user_id = authed_user(&headers, &state)?;
     let message_id = Uuid::new_v4().to_string();
     let sent_at = now_ts();
-    let payload_hex = hex::encode(user_id.as_bytes());
+
+    let mut conn = state.pool.get().map_err(db_error)?;
+    let sender = repository::get_user(&mut conn, &user_id).map_err(db_error)?;
+    let payload_json = serde_json::json!({
+        "user_id": user_id,
+        "pubkey_hex": sender.pubkey_hex,
+    });
+    let payload_hex = hex::encode(payload_json.to_string().as_bytes());
     let nonce_hex = "000000000000000000000000".to_string();
 
     {
-        let mut conn = state.pool.get().map_err(db_error)?;
         repository::add_friendship_pair(&mut conn, &user_id, &payload.friend_id, sent_at)
             .map_err(db_error)?;
         info!(
@@ -353,6 +357,26 @@ pub async fn add_friend(
     }
 
     Ok(StatusCode::ACCEPTED)
+}
+
+pub async fn get_friends(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<FriendListResponse>, ApiError> {
+    let user_id = authed_user(&headers, &state)?;
+    let mut conn = state.pool.get().map_err(db_error)?;
+    let rows = repository::list_friends_for_user(&mut conn, &user_id)
+        .map_err(db_error)?;
+    let friends: Vec<FriendInfo> = rows
+        .into_iter()
+        .map(|(friend_id, pubkey_hex, created_at)| FriendInfo {
+            user_id: friend_id,
+            pubkey_hex,
+            created_at,
+        })
+        .collect();
+    debug!(user_id = %user_id, count = friends.len(), "friends listed");
+    Ok(Json(FriendListResponse { friends }))
 }
 
 pub async fn ws_handler(

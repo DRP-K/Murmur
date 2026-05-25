@@ -5,7 +5,7 @@ use futures_util::StreamExt;
 use http_body_util::BodyExt;
 use murmur_server::app::{AppState, router};
 use murmur_server::auth::user_id_for_pubkey;
-use murmur_server::wire::{AuthResponse, ServerEnvelope};
+use murmur_server::wire::{AuthResponse, FriendListResponse, ServerEnvelope};
 use serde_json::{Value, json};
 use tempfile::NamedTempFile;
 use tokio::net::TcpListener;
@@ -379,6 +379,54 @@ async fn websocket_live_message_and_sender_ack() {
     alice_ws.close(None).await.expect("alice close should send");
     bob_ws.close(None).await.expect("bob close should send");
     handle.abort();
+}
+
+#[tokio::test]
+async fn add_and_list_friends() {
+    let app = app();
+    let alice = test_user(11);
+    let bob = test_user(12);
+
+    register_user(app.clone(), &alice).await;
+    register_user(app.clone(), &bob).await;
+    let alice_token = auth_user(app.clone(), &alice).await;
+
+    // Adding Bob as friend.
+    let response = request(
+        app.clone(),
+        "POST",
+        "/api/friends",
+        Some(&alice_token),
+        json!({ "friend_id": bob.user_id }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+
+    // Listing friends returns Bob with his pubkey.
+    let list_resp = request(
+        app.clone(),
+        "GET",
+        "/api/friends",
+        Some(&alice_token),
+        json!({}),
+    )
+    .await;
+    assert_eq!(list_resp.status(), StatusCode::OK);
+    let body = list_resp
+        .into_body()
+        .collect()
+        .await
+        .expect("body should collect")
+        .to_bytes();
+    let list: FriendListResponse =
+        serde_json::from_slice(&body).expect("friend list response should parse");
+    assert_eq!(list.friends.len(), 1);
+    assert_eq!(list.friends[0].user_id, bob.user_id);
+    assert_eq!(list.friends[0].pubkey_hex, bob.pubkey_hex);
+
+    // Unauthenticated request.
+    let unauth = request(app, "GET", "/api/friends", None, json!({})).await;
+    assert_eq!(unauth.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]

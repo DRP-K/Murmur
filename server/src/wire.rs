@@ -103,6 +103,18 @@ pub struct AckPostRequest {
     pub post_id: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FriendInfo {
+    pub user_id: String,
+    pub pubkey_hex: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FriendListResponse {
+    pub friends: Vec<FriendInfo>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct AddFriendRequest {
     pub friend_id: String,

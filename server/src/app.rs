@@ -95,7 +95,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/messages/{id}", delete(api::delete_message))
         .route("/api/posts", post(api::post_post).get(api::get_posts))
         .route("/api/posts/ack", post(api::ack_post))
-        .route("/api/friends", post(api::add_friend))
+        .route("/api/friends", get(api::get_friends).post(api::add_friend))
         .route("/api/ws", get(api::ws_handler))
         .with_state(state)
 }

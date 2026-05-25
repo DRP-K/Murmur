@@ -191,6 +191,18 @@ pub fn add_friendship_pair(
     })
 }
 
+pub fn list_friends_for_user(
+    conn: &mut SqliteConnection,
+    user_id: &str,
+) -> QueryResult<Vec<(String, String, i64)>> {
+    // Returns (friend_user_id, friend_pubkey_hex, friendship_created_at)
+    friendships::table
+        .inner_join(users::table.on(friendships::user_b.eq(users::user_id)))
+        .filter(friendships::user_a.eq(user_id))
+        .select((friendships::user_b, users::pubkey_hex, friendships::created_at))
+        .load(conn)
+}
+
 pub fn get_friendship(
     conn: &mut SqliteConnection,
     user_a: &str,

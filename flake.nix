@@ -36,6 +36,7 @@
                 lldb
                 nixfmt
                 rust-analyzer
+                diesel-cli
               ];
 
               nativeBuildInputs = commonNativeBuildInputs ++ [ rustToolchain ];

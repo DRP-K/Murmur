@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS friendships;
+DROP TABLE IF EXISTS post_deliveries;
+DROP TABLE IF EXISTS posts;
+DROP TABLE IF EXISTS pending_messages;
+DROP TABLE IF EXISTS users;

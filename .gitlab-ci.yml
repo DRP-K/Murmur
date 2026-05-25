@@ -32,6 +32,9 @@ variables:
 build-env-image:
   stage: build
   image: docker:28
+  services:
+    - name: docker:dind
+      alias: docker
   script:
     - docker build -f Dockerfile.build -t murmur-build-env:ci .
 

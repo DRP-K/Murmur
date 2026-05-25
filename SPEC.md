@@ -88,9 +88,10 @@ On connect: server drains all pending messages and posts for the user, then stay
 **Send path:**
 1. Message written to local `messages` table with `status='sent'`.
 2. Relay push fired async (fire-and-forget): `POST /api/messages` with `payload_hex = hex(plaintext)`. Real E2E encryption using the `dh_shared_hex` is a future phase — currently the message is sent as plaintext over HTTPS.
+3. Message queued on the relay server
 
 **Receive path:**
-- WS: `handle_ws_message` inserts into `messages` with `status='delivered'` and emits `chat:new_message` Tauri event.
+- WS: `handle_ws_message` inserts into `messages` with `status='delivered'` and emits an event like `chat:new_message` .
 - HTTP poll: same path, triggered every 60 s.
 - `delivered_ack`: when the server confirms live delivery, sender's local record is updated to `status='delivered'`.
 

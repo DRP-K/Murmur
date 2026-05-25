@@ -54,7 +54,7 @@ test-server:
 
 package-staged-image:
   stage: package
-  image: docker:latest
+  image: "$BUILD_IMAGE"
   needs:
     - test-server
   script:
@@ -62,7 +62,7 @@ package-staged-image:
 
 package-tsuru-image:
   stage: package
-  image: docker:latest
+  image: "$BUILD_IMAGE"
   needs:
     - test-server
   script:
@@ -70,7 +70,7 @@ package-tsuru-image:
 
 deploy-staged:
   stage: deploy
-  image: docker:latest
+  image: "$BUILD_IMAGE"
   tags:
     - murmur-staged
   needs:
@@ -84,7 +84,7 @@ deploy-staged:
 
 deploy-production:
   stage: deploy
-  image: ghcr.io/williamqiufeng/devops:build-env
+  image: "$BUILD_IMAGE"
   needs:
     - package-tsuru-image
   rules:

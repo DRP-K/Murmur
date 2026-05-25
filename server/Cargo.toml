@@ -5,6 +5,25 @@ edition = "2024"
 rust-version = "1.85.1"
 
 [dependencies]
-diesel = { version = "2.2.4", features = ["sqlite", "chrono"] }
+axum = { version = "0.8.1", features = ["ws"] }
+chrono = { version = "0.4.39", default-features = false, features = ["clock"] }
+diesel = { version = "2.2.4", features = ["sqlite", "chrono", "r2d2"] }
 diesel_migrations = "2.2.0"
+ed25519-dalek = "2.1.1"
+futures-util = "0.3.31"
+hex = "0.4.3"
 libsqlite3-sys = { version = "0.35.0", features = ["bundled"] }
+r2d2 = "0.8.10"
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.135"
+sha2 = "0.10.8"
+thiserror = "2.0.11"
+tokio = { version = "1.43.0", features = ["macros", "net", "rt-multi-thread", "sync"] }
+tower = { version = "0.5.2", features = ["util"] }
+uuid = { version = "1.12.0", features = ["v4", "serde"] }
+
+[dev-dependencies]
+http-body-util = "0.1.2"
+reqwest = { version = "0.12.12", default-features = false, features = ["json", "rustls-tls"] }
+tempfile = "3.16.0"
+tokio-tungstenite = { version = "0.26.1", features = ["rustls-tls-webpki-roots"] }

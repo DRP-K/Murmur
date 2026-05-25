@@ -1,1 +1,18 @@
+# IDE / editor
+.idea/
+.vscode/
+*.iml
+
+# direnv
 .direnv/
+.envrc
+
+# macOS
+.DS_Store
+
+# Environment / secrets
+.env
+.env.*
+
+# Tooling analysis
+.codewhale/

@@ -23,4 +23,7 @@ RUN apk add --no-cache \
     && rustup component add rustfmt \
     && chmod -R a+w "${CARGO_HOME}" "${RUSTUP_HOME}"
 
+run curl -fsSL "https://tsuru.io/get" | bash
+run tsuru target add impaas https://impaas.uk -s
+
 WORKDIR /repo

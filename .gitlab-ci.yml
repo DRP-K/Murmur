@@ -31,13 +31,12 @@ variables:
       - .cargo/git/
       - server/target/
 
-.docker-dind:
-  services:
-    - name: docker:28-dind
-      alias: docker
-  variables:
-    DOCKER_HOST: "tcp://docker:2375"
-    DOCKER_TLS_CERTDIR: ""
+.docker-host:
+  tags:
+    - murmur-staged
+  before_script:
+    - for i in $(seq 1 30); do docker info && break || sleep 1; done
+    - docker info
 
 fmt-check:
   stage: test
@@ -63,7 +62,7 @@ test-server:
 package-staged-image:
   stage: package
   image: "$BUILD_IMAGE"
-  extends: .docker-dind
+  extends: .docker-host
   needs:
     - test-server
   script:
@@ -72,7 +71,7 @@ package-staged-image:
 package-tsuru-image:
   stage: package
   image: "$BUILD_IMAGE"
-  extends: .docker-dind
+  extends: .docker-host
   needs:
     - test-server
   script:
@@ -81,9 +80,7 @@ package-tsuru-image:
 deploy-staged:
   stage: deploy
   image: "$BUILD_IMAGE"
-  extends: .docker-dind
-  tags:
-    - murmur-staged
+  extends: .docker-host
   needs:
     - package-staged-image
   when: manual

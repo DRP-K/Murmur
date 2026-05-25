@@ -12,6 +12,7 @@ RUN apk add --no-cache \
       ca-certificates \
       curl \
       docker-cli \
+      docker-cli-compose \
       git \
       openssl-dev \
       pkgconf \

@@ -4,6 +4,7 @@ use std::sync::{Arc, RwLock};
 use axum::Router;
 use axum::routing::{delete, get, post};
 use tokio::sync::mpsc;
+use tracing::{debug, warn};
 
 use crate::api;
 use crate::db::{DbPool, establish_pool, run_migrations};
@@ -33,6 +34,7 @@ impl AppState {
             let mut conn = pool.get()?;
             run_migrations(&mut conn)?;
         }
+        debug!("database pool initialized and migrations applied");
         Ok(Self::new(pool))
     }
 
@@ -42,12 +44,14 @@ impl AppState {
 
     pub fn put_session(&self, token: String, user_id: String) {
         if let Ok(mut sessions) = self.sessions.write() {
+            debug!(user_id = %user_id, "session created");
             sessions.insert(token, user_id);
         }
     }
 
     pub fn put_online(&self, user_id: String, tx: mpsc::UnboundedSender<ServerEnvelope>) {
         if let Ok(mut online) = self.online.write() {
+            debug!(user_id = %user_id, "websocket sender registered");
             online.insert(user_id, tx);
         }
     }
@@ -55,16 +59,28 @@ impl AppState {
     pub fn remove_online(&self, user_id: &str) {
         if let Ok(mut online) = self.online.write() {
             online.remove(user_id);
+            debug!(user_id, "websocket sender removed");
         }
     }
 
     pub fn send_to_online(&self, user_id: &str, envelope: ServerEnvelope) -> bool {
+        // Snapshot sender outside lock.
         let tx = self
             .online
             .read()
             .ok()
             .and_then(|online| online.get(user_id).cloned());
-        tx.is_some_and(|tx| tx.send(envelope).is_ok())
+
+        match tx {
+            Some(tx) => {
+                let sent = tx.send(envelope).is_ok();
+                if !sent {
+                    warn!(user_id, "online channel send failed");
+                }
+                sent
+            }
+            None => false,
+        }
     }
 }
 

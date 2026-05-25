@@ -24,20 +24,24 @@ pub enum AuthError {
 }
 
 pub fn user_id_for_pubkey(pubkey_bytes: &[u8]) -> String {
+    // Stable identity digest.
     let digest = Sha256::digest(pubkey_bytes);
     hex::encode(&digest[..16])
 }
 
 pub fn validate_registration(user_id: &str, pubkey_hex: &str) -> Result<(), AuthError> {
+    // Hex-encoded Ed25519 key.
     let pubkey = hex::decode(pubkey_hex).map_err(|_| AuthError::MalformedPublicKey)?;
     let pubkey: [u8; 32] = pubkey
         .try_into()
         .map_err(|_| AuthError::MalformedPublicKey)?;
 
+    // User id binds to pubkey.
     if user_id_for_pubkey(&pubkey) != user_id {
         return Err(AuthError::UserIdMismatch);
     }
 
+    // Reject invalid curve encodings.
     VerifyingKey::from_bytes(&pubkey).map_err(|_| AuthError::MalformedPublicKey)?;
     Ok(())
 }
@@ -47,10 +51,12 @@ pub fn verify_auth_request(
     request: &AuthRequest,
     now: i64,
 ) -> Result<(), AuthError> {
+    // Replay window check.
     if (request.timestamp - now).abs() > AUTH_WINDOW_SECONDS {
         return Err(AuthError::TimestampOutsideWindow);
     }
 
+    // Stored registration key.
     let user = repository::get_user(conn, &request.user_id).map_err(|_| AuthError::UnknownUser)?;
     let pubkey = hex::decode(user.pubkey_hex).map_err(|_| AuthError::MalformedPublicKey)?;
     let pubkey: [u8; 32] = pubkey
@@ -63,6 +69,7 @@ pub fn verify_auth_request(
     )
     .map_err(|_| AuthError::MalformedSignature)?;
 
+    // Spec challenge string.
     let message = format!("{}:{}", request.user_id, request.timestamp);
     verifying_key
         .verify(message.as_bytes(), &signature)

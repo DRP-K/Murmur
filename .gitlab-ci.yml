@@ -84,8 +84,6 @@ deploy-staged:
   when: manual
   environment:
     name: staged
-  before_script:
-    - test -n "$STAGED_DATABASE_URL"
   script:
     - docker compose -f compose.staged.yml up -d --build --remove-orphans
     - docker compose -f compose.staged.yml ps

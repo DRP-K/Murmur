@@ -71,6 +71,8 @@ package-tsuru-image:
 deploy-staged:
   stage: deploy
   image: docker:latest
+  tags:
+    - murmur-staged
   needs:
     - package-staged-image
   when: manual

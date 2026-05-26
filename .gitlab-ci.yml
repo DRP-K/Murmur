@@ -40,7 +40,6 @@ variables:
 
 fmt-check:
   stage: test
-  image: "$BUILD_IMAGE"
   extends: .cargo-cache
   before_script:
     - apk add --no-cache build-base pkgconf sqlite-dev
@@ -51,7 +50,6 @@ fmt-check:
 
 test-server:
   stage: test
-  image: "$BUILD_IMAGE"
   extends: .cargo-cache
   before_script:
     - apk add --no-cache build-base pkgconf sqlite-dev
@@ -61,7 +59,6 @@ test-server:
 
 package-staged-image:
   stage: package
-  image: "$BUILD_IMAGE"
   extends: .docker-host
   needs:
     - test-server
@@ -70,7 +67,6 @@ package-staged-image:
 
 package-tsuru-image:
   stage: package
-  image: "$BUILD_IMAGE"
   extends: .docker-host
   needs:
     - test-server
@@ -79,7 +75,6 @@ package-tsuru-image:
 
 deploy-staged:
   stage: deploy
-  image: "$BUILD_IMAGE"
   extends: .docker-host
   needs:
     - package-staged-image
@@ -92,7 +87,6 @@ deploy-staged:
 
 deploy-production:
   stage: deploy
-  image: "$BUILD_IMAGE"
   needs:
     - package-tsuru-image
   rules:

@@ -32,26 +32,39 @@ export function ReachModal({ post, onClose }: Props) {
     setError(null)
 
     try {
-      const ephemeral = generateEphemeralKeypair()
-      const threadId = computeThreadId(post.id, ephemeral.pubHex)
       const msgId = crypto.randomUUID()
       const sentAt = Math.floor(Date.now() / 1000)
 
-      await db.anonThreads.add({
-        id: threadId,
-        postId: post.id,
-        postSnippet: post.content.slice(0, 60),
-        ephemeralPrivHex: ephemeral.privHex,
-        ephemeralPubHex: ephemeral.pubHex,
-        peerId: post.author_id,
-        isInitiator: 1,
-        status: 'open',
-        createdAt: sentAt,
-      })
+      // Reuse an existing open thread for this post if one exists.
+      const existing = await db.anonThreads
+        .where('postId').equals(post.id)
+        .filter((t) => t.isInitiator === 1 && t.status !== 'closed')
+        .first()
+
+      let threadId: string
+      if (existing) {
+        threadId = existing.id
+      } else {
+        const ephemeral = generateEphemeralKeypair()
+        threadId = computeThreadId(post.id, ephemeral.pubHex)
+        await db.anonThreads.add({
+          id: threadId,
+          postId: post.id,
+          postSnippet: post.content.slice(0, 60),
+          ephemeralPrivHex: ephemeral.privHex,
+          ephemeralPubHex: ephemeral.pubHex,
+          peerId: post.author_id,
+          isInitiator: 1,
+          status: 'open',
+          createdAt: sentAt,
+        })
+      }
+
+      const peerId = existing?.peerId ?? post.author_id
 
       await sendMessage(token, {
         id: `${threadId}|${msgId}`,
-        recipient_id: post.author_id,
+        recipient_id: peerId,
         payload_hex: encodePayload(text),
         nonce_hex: '000000000000000000000000',
         msg_type: 'anon',

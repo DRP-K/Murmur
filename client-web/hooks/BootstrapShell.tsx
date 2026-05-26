@@ -23,6 +23,7 @@ import { usePostSink } from '@/hooks/usePostSink'
  */
 export function BootstrapShell({ children }: { children: React.ReactNode }) {
   const authenticate = useAppStore((s) => s.authenticate)
+  const loadFromDexie = useAppStore((s) => s.loadFromDexie)
   const setWsStatus = useAppStore((s) => s.setWsStatus)
   const setBootstrapped = useAppStore((s) => s.setBootstrapped)
   const bootstrapped = useAppStore((s) => s.bootstrapped)
@@ -51,6 +52,11 @@ export function BootstrapShell({ children }: { children: React.ReactNode }) {
         if (cancelled) return
 
         await authenticate()
+        if (cancelled) return
+
+        // Restore persisted messages and conversations before opening the
+        // WS so the UI renders with full history on the first paint.
+        await loadFromDexie()
         if (cancelled) return
 
         setReauthHandler(() => useAppStore.getState().authenticate())

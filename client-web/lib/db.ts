@@ -31,10 +31,32 @@ export interface AnonThread {
   createdAt: number
 }
 
+// Persisted DM — survives page refresh.
+export interface StoredMessage {
+  id: string
+  convId: string   // indexed for per-conversation queries
+  content: string
+  sentAt: number
+  isOwn: boolean
+  status: 'sent' | 'delivered'
+}
+
+// Persisted conversation summary — mirrors ConversationMeta in the Zustand store.
+export interface StoredConversation {
+  conversationId: string
+  friendId: string
+  friendName: string | null
+  lastMessage: string
+  lastAt: number
+  unread: number
+}
+
 class MurmurDatabase extends Dexie {
   identity!: EntityTable<Identity, 'userId'>
   friends!: EntityTable<LocalFriend, 'userId'>
   anonThreads!: EntityTable<AnonThread, 'id'>
+  messages!: EntityTable<StoredMessage, 'id'>
+  conversations!: EntityTable<StoredConversation, 'conversationId'>
 
   constructor() {
     super('murmur')
@@ -45,6 +67,10 @@ class MurmurDatabase extends Dexie {
     })
     this.version(2).stores({
       anonThreads: 'id, postId, peerId, status, createdAt',
+    })
+    this.version(3).stores({
+      messages: 'id, convId, sentAt',
+      conversations: 'conversationId',
     })
   }
 }

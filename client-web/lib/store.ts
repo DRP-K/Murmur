@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { auth as relayAuth } from './relay'
 import { getIdentity } from './identity'
+import { db } from './db'
 import type { Post } from './types'
 
 export type WsStatus = 'idle' | 'connecting' | 'connected' | 'disconnected'
@@ -38,7 +39,6 @@ interface AppState {
   bootstrapError: string | null
   posts: Post[]
   messagesByConv: Record<string, LocalMessage[]>
-  // Conversation summaries — survive tab navigation within a session.
   conversations: Record<string, ConversationMeta>
 }
 
@@ -48,12 +48,12 @@ interface AppActions {
   setWsStatus: (wsStatus: WsStatus) => void
   setBootstrapped: (ok: boolean, error?: string) => void
   authenticate: () => Promise<string>
+  loadFromDexie: () => Promise<void>
   addPosts: (posts: Post[]) => void
   addPost: (post: Post) => void
   addMessage: (convId: string, msg: LocalMessage) => void
   addMessages: (convId: string, msgs: LocalMessage[]) => void
   updateMessageStatus: (msgId: string, status: 'sent' | 'delivered') => void
-  // Enrich a conversation entry (e.g. set friendName after a Dexie lookup).
   upsertConversation: (convId: string, update: {
     friendId: string
     lastMessage?: string
@@ -66,7 +66,7 @@ interface AppActions {
 
 export type AppStore = AppState & AppActions
 
-export const useAppStore = create<AppStore>((set) => ({
+export const useAppStore = create<AppStore>((set, get) => ({
   userId: null,
   pubkeyHex: null,
   token: null,
@@ -91,6 +91,27 @@ export const useAppStore = create<AppStore>((set) => ({
     return token
   },
 
+  loadFromDexie: async () => {
+    const [storedMsgs, storedConvs] = await Promise.all([
+      db.messages.toArray(),
+      db.conversations.toArray(),
+    ])
+
+    const messagesByConv: Record<string, LocalMessage[]> = {}
+    for (const { convId, ...msg } of storedMsgs) {
+      ;(messagesByConv[convId] ??= []).push(msg)
+    }
+    for (const arr of Object.values(messagesByConv)) {
+      arr.sort((a, b) => a.sentAt - b.sentAt)
+    }
+
+    const conversations: Record<string, ConversationMeta> = Object.fromEntries(
+      storedConvs.map((c) => [c.conversationId, c]),
+    )
+
+    set({ messagesByConv, conversations })
+  },
+
   addPosts: (incoming) =>
     set((state) => {
       const existing = new Set(state.posts.map((p) => p.id))
@@ -105,7 +126,7 @@ export const useAppStore = create<AppStore>((set) => ({
       return { posts: [post, ...state.posts] }
     }),
 
-  addMessage: (convId, msg) =>
+  addMessage: (convId, msg) => {
     set((state) => {
       const existing = state.messagesByConv[convId] ?? []
       if (existing.some((m) => m.id === msg.id)) return state
@@ -127,16 +148,20 @@ export const useAppStore = create<AppStore>((set) => ({
             friendName: existingConv?.friendName ?? null,
             lastMessage: isNewer ? msg.content : (existingConv?.lastMessage ?? msg.content),
             lastAt: isNewer ? msg.sentAt : (existingConv?.lastAt ?? msg.sentAt),
-            // Only count messages from the other side as unread.
             unread: msg.isOwn
               ? (existingConv?.unread ?? 0)
               : (existingConv?.unread ?? 0) + 1,
           },
         },
       }
-    }),
+    })
+    // Persist to Dexie after the synchronous Zustand update.
+    db.messages.put({ ...msg, convId }).catch(console.error)
+    const conv = get().conversations[convId]
+    if (conv) db.conversations.put(conv).catch(console.error)
+  },
 
-  addMessages: (convId, msgs) =>
+  addMessages: (convId, msgs) => {
     set((state) => {
       const existing = state.messagesByConv[convId] ?? []
       const existingIds = new Set(existing.map((m) => m.id))
@@ -166,9 +191,15 @@ export const useAppStore = create<AppStore>((set) => ({
           },
         },
       }
-    }),
+    })
+    for (const msg of msgs) {
+      db.messages.put({ ...msg, convId }).catch(console.error)
+    }
+    const conv = get().conversations[convId]
+    if (conv) db.conversations.put(conv).catch(console.error)
+  },
 
-  updateMessageStatus: (msgId, status) =>
+  updateMessageStatus: (msgId, status) => {
     set((state) => {
       const updated: Record<string, LocalMessage[]> = {}
       let changed = false
@@ -179,9 +210,12 @@ export const useAppStore = create<AppStore>((set) => ({
       }
       if (!changed) return state
       return { messagesByConv: updated }
-    }),
+    })
+    // Update status in Dexie — we don't know the convId here, so use update by id.
+    db.messages.update(msgId, { status }).catch(console.error)
+  },
 
-  upsertConversation: (convId, update) =>
+  upsertConversation: (convId, update) => {
     set((state) => {
       const existing = state.conversations[convId]
       return {
@@ -197,9 +231,12 @@ export const useAppStore = create<AppStore>((set) => ({
           },
         },
       }
-    }),
+    })
+    const conv = get().conversations[convId]
+    if (conv) db.conversations.put(conv).catch(console.error)
+  },
 
-  clearUnread: (convId) =>
+  clearUnread: (convId) => {
     set((state) => {
       const existing = state.conversations[convId]
       if (!existing || existing.unread === 0) return state
@@ -209,5 +246,8 @@ export const useAppStore = create<AppStore>((set) => ({
           [convId]: { ...existing, unread: 0 },
         },
       }
-    }),
+    })
+    const conv = get().conversations[convId]
+    if (conv) db.conversations.put(conv).catch(console.error)
+  },
 }))

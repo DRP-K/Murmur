@@ -106,6 +106,42 @@ deploy-production:
   script:
     - tsuru app deploy -a "$TSURU_APP_PRODUCTION" --dockerfile Dockerfile.tsuru -- .
 
+build-client-web:
+  stage: build
+  image: node:22-alpine
+  cache:
+    key:
+      files:
+        - client-web/package-lock.json
+    paths:
+      - client-web/node_modules/
+  script:
+    - cd client-web
+    - npm ci
+    - npm run build
+  artifacts:
+    paths:
+      - client-web/dist/
+    expire_in: 1 hour
+
+deploy-pages:
+  stage: deploy
+  image: node:22-alpine
+  needs:
+    - build-client-web
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+    - when: never
+  environment:
+    name: cloudflare-pages
+    url: https://murmur.pages.dev
+  before_script:
+    - test -n "$CLOUDFLARE_API_TOKEN"
+    - test -n "$CLOUDFLARE_ACCOUNT_ID"
+  script:
+    - npx wrangler pages deploy client-web/dist --project-name murmur
+
 sast:
   stage: test
 

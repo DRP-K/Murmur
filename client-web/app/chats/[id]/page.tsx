@@ -26,6 +26,7 @@ export default function ConversationPage() {
   const messagesByConv = useAppStore((s) => s.messagesByConv)
   const addMessage = useAppStore((s) => s.addMessage)
   const updateMessageStatus = useAppStore((s) => s.updateMessageStatus)
+  const clearUnread = useAppStore((s) => s.clearUnread)
   const router = useRouter()
 
   const messages = messagesByConv[conversationId] ?? []
@@ -40,6 +41,11 @@ export default function ConversationPage() {
     if (!friendId) return
     db.friends.get(friendId).then((f) => setFriendName(f?.nickname ?? null))
   }, [friendId])
+
+  // Clear unread badge when the conversation is opened.
+  useEffect(() => {
+    clearUnread(conversationId)
+  }, [conversationId, clearUnread])
 
   // On mount: fetch any pending messages for this conversation from the server,
   // add them to the store (dedup), and ack them so they clear the queue.

@@ -5,13 +5,28 @@ import type { Post } from './types'
 
 export type WsStatus = 'idle' | 'connecting' | 'connected' | 'disconnected'
 
-// Client-side rendered message (DM or anon).
 export interface LocalMessage {
   id: string
   content: string
   sentAt: number
   isOwn: boolean
   status: 'sent' | 'delivered'
+}
+
+export interface ConversationMeta {
+  conversationId: string
+  friendId: string
+  friendName: string | null
+  lastMessage: string
+  lastAt: number
+  unread: number
+}
+
+// convId = sort([a, b]).join('-'): 32-char hex + '-' + 32-char hex.
+function friendIdFromConvId(convId: string, myUserId: string | null): string {
+  const a = convId.slice(0, 32)
+  const b = convId.slice(33)
+  return myUserId && a === myUserId ? b : a
 }
 
 interface AppState {
@@ -21,10 +36,10 @@ interface AppState {
   wsStatus: WsStatus
   bootstrapped: boolean
   bootstrapError: string | null
-  // Post feed — survives tab navigations (in-memory, lost on refresh).
   posts: Post[]
-  // Messages by conversation ID — survives tab navigations.
   messagesByConv: Record<string, LocalMessage[]>
+  // Conversation summaries — survive tab navigation within a session.
+  conversations: Record<string, ConversationMeta>
 }
 
 interface AppActions {
@@ -38,6 +53,15 @@ interface AppActions {
   addMessage: (convId: string, msg: LocalMessage) => void
   addMessages: (convId: string, msgs: LocalMessage[]) => void
   updateMessageStatus: (msgId: string, status: 'sent' | 'delivered') => void
+  // Enrich a conversation entry (e.g. set friendName after a Dexie lookup).
+  upsertConversation: (convId: string, update: {
+    friendId: string
+    lastMessage?: string
+    lastAt?: number
+    unread?: number
+    friendName?: string
+  }) => void
+  clearUnread: (convId: string) => void
 }
 
 export type AppStore = AppState & AppActions
@@ -51,6 +75,7 @@ export const useAppStore = create<AppStore>((set) => ({
   bootstrapError: null,
   posts: [],
   messagesByConv: {},
+  conversations: {},
 
   setSession: (userId, pubkeyHex, token) => set({ userId, pubkeyHex, token }),
   setToken: (token) => set({ token }),
@@ -84,10 +109,29 @@ export const useAppStore = create<AppStore>((set) => ({
     set((state) => {
       const existing = state.messagesByConv[convId] ?? []
       if (existing.some((m) => m.id === msg.id)) return state
+
+      const existingConv = state.conversations[convId]
+      const friendId = friendIdFromConvId(convId, state.userId)
+      const isNewer = !existingConv || msg.sentAt >= existingConv.lastAt
+
       return {
         messagesByConv: {
           ...state.messagesByConv,
           [convId]: [...existing, msg].sort((a, b) => a.sentAt - b.sentAt),
+        },
+        conversations: {
+          ...state.conversations,
+          [convId]: {
+            conversationId: convId,
+            friendId,
+            friendName: existingConv?.friendName ?? null,
+            lastMessage: isNewer ? msg.content : (existingConv?.lastMessage ?? msg.content),
+            lastAt: isNewer ? msg.sentAt : (existingConv?.lastAt ?? msg.sentAt),
+            // Only count messages from the other side as unread.
+            unread: msg.isOwn
+              ? (existingConv?.unread ?? 0)
+              : (existingConv?.unread ?? 0) + 1,
+          },
         },
       }
     }),
@@ -98,10 +142,28 @@ export const useAppStore = create<AppStore>((set) => ({
       const existingIds = new Set(existing.map((m) => m.id))
       const fresh = msgs.filter((m) => !existingIds.has(m.id))
       if (fresh.length === 0) return state
+
+      const latest = fresh.reduce((a, b) => (a.sentAt > b.sentAt ? a : b))
+      const existingConv = state.conversations[convId]
+      const friendId = friendIdFromConvId(convId, state.userId)
+      const isNewer = !existingConv || latest.sentAt >= existingConv.lastAt
+      const newUnread = fresh.filter((m) => !m.isOwn).length
+
       return {
         messagesByConv: {
           ...state.messagesByConv,
           [convId]: [...existing, ...fresh].sort((a, b) => a.sentAt - b.sentAt),
+        },
+        conversations: {
+          ...state.conversations,
+          [convId]: {
+            conversationId: convId,
+            friendId,
+            friendName: existingConv?.friendName ?? null,
+            lastMessage: isNewer ? latest.content : (existingConv?.lastMessage ?? latest.content),
+            lastAt: isNewer ? latest.sentAt : (existingConv?.lastAt ?? latest.sentAt),
+            unread: (existingConv?.unread ?? 0) + newUnread,
+          },
         },
       }
     }),
@@ -117,5 +179,35 @@ export const useAppStore = create<AppStore>((set) => ({
       }
       if (!changed) return state
       return { messagesByConv: updated }
+    }),
+
+  upsertConversation: (convId, update) =>
+    set((state) => {
+      const existing = state.conversations[convId]
+      return {
+        conversations: {
+          ...state.conversations,
+          [convId]: {
+            conversationId: convId,
+            friendId: update.friendId,
+            friendName: update.friendName ?? existing?.friendName ?? null,
+            lastMessage: update.lastMessage ?? existing?.lastMessage ?? '',
+            lastAt: update.lastAt ?? existing?.lastAt ?? 0,
+            unread: update.unread ?? existing?.unread ?? 0,
+          },
+        },
+      }
+    }),
+
+  clearUnread: (convId) =>
+    set((state) => {
+      const existing = state.conversations[convId]
+      if (!existing || existing.unread === 0) return state
+      return {
+        conversations: {
+          ...state.conversations,
+          [convId]: { ...existing, unread: 0 },
+        },
+      }
     }),
 }))

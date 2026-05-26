@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useCallback, useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { ensureAnonThread } from '@/hooks/useAnonSink'
 import { processFriendAdded } from '@/hooks/useFriendSink'
 import { useAppStore, type ConversationMeta } from '@/lib/store'
@@ -11,6 +11,7 @@ import * as ws from '@/lib/ws'
 import { db } from '@/lib/db'
 import { ChatRow } from '@/components/ChatRow'
 import { TabBar } from '@/components/TabBar'
+import ConversationPage from './ConversationView'
 import type { ServerEnvelope } from '@/lib/types'
 
 interface FriendRow {
@@ -30,6 +31,21 @@ function makeConversationId(a: string, b: string): string {
 }
 
 export default function ChatsPage() {
+  return (
+    <Suspense fallback={<div className="flex flex-1 items-center justify-center text-sm text-zinc-400">Loading…</div>}>
+      <ChatsPageContent />
+    </Suspense>
+  )
+}
+
+function ChatsPageContent() {
+  const searchParams = useSearchParams()
+  if (searchParams.has('id')) return <ConversationPage />
+
+  return <ChatListPage />
+}
+
+function ChatListPage() {
   const bootstrapped = useAppStore((s) => s.bootstrapped)
   const bootstrapError = useAppStore((s) => s.bootstrapError)
   const userId = useAppStore((s) => s.userId)
@@ -44,12 +60,12 @@ export default function ChatsPage() {
   const [friends, setFriends] = useState<FriendRow[]>([])
   const [anonThreads, setAnonThreads] = useState<AnonSummary[]>([])
 
-  async function loadFriends(myId: string) {
+  const loadFriends = useCallback(async () => {
     return db.friends.filter((f) => f.blockedAt === null).toArray()
-  }
+  }, [])
 
   // Fetch pending messages: ack DMs, enrich conversation names, handle side-types.
-  async function loadMessages(tok: string, myId: string) {
+  const loadMessages = useCallback(async (tok: string, myId: string) => {
     const { messages } = await getMessages(tok)
 
     for (const env of messages) {
@@ -94,7 +110,7 @@ export default function ChatsPage() {
     }
 
     // Build friends-without-conversations list.
-    const allFriends = await loadFriends(myId)
+    const allFriends = await loadFriends()
     setFriends(
       allFriends.map((f) => ({
         conversationId: makeConversationId(myId, f.userId),
@@ -102,9 +118,9 @@ export default function ChatsPage() {
         friendName: f.nickname,
       })),
     )
-  }
+  }, [addMessage, loadFriends, upsertConversation])
 
-  async function loadAnonThreads() {
+  const loadAnonThreads = useCallback(async () => {
     const threads = await db.anonThreads
       .filter((t) => t.status !== 'closed')
       .toArray()
@@ -113,10 +129,10 @@ export default function ChatsPage() {
         .sort((a, b) => b.createdAt - a.createdAt)
         .map((t) => ({ threadId: t.id, postSnippet: t.postSnippet, lastAt: t.createdAt })),
     )
-  }
+  }, [])
 
-  async function refreshFriends(myId: string) {
-    const allFriends = await loadFriends(myId)
+  const refreshFriends = useCallback(async (myId: string) => {
+    const allFriends = await loadFriends()
     setFriends(
       allFriends.map((f) => ({
         conversationId: makeConversationId(myId, f.userId),
@@ -124,13 +140,15 @@ export default function ChatsPage() {
         friendName: f.nickname,
       })),
     )
-  }
+  }, [loadFriends])
 
   useEffect(() => {
     if (!bootstrapped || !token || !userId) return
-    loadMessages(token, userId).catch(console.error)
-    loadAnonThreads().catch(console.error)
-  }, [bootstrapped, token, userId])
+    queueMicrotask(() => {
+      loadMessages(token, userId).catch(console.error)
+      loadAnonThreads().catch(console.error)
+    })
+  }, [bootstrapped, loadAnonThreads, loadMessages, token, userId])
 
   // WS: only handle side-effects that need Dexie refreshes.
   // DMs are handled globally by useMessageSink + the store's addMessage.
@@ -149,7 +167,7 @@ export default function ChatsPage() {
         setTimeout(() => refreshFriends(myId), 200)
       }
     })
-  }, [])
+  }, [loadAnonThreads, refreshFriends])
 
   if (!bootstrapped) {
     return (
@@ -183,7 +201,7 @@ export default function ChatsPage() {
                 preview={c.lastMessage}
                 timestamp={c.lastAt}
                 unread={c.unread}
-                onClick={() => router.push(`/chats/${c.conversationId}`)}
+                onClick={() => router.push(`/chats?id=${encodeURIComponent(c.conversationId)}`)}
               />
             ))}
 
@@ -198,7 +216,7 @@ export default function ChatsPage() {
                     name={f.friendName ?? f.friendId.slice(0, 8) + '…'}
                     preview="No messages yet — say hi!"
                     timestamp={0}
-                    onClick={() => router.push(`/chats/${f.conversationId}`)}
+                    onClick={() => router.push(`/chats?id=${encodeURIComponent(f.conversationId)}`)}
                   />
                 ))}
               </>
@@ -216,7 +234,7 @@ export default function ChatsPage() {
                     preview="Anonymous thread"
                     timestamp={t.lastAt}
                     isAnon
-                    onClick={() => router.push(`/chats/anon/${t.threadId}`)}
+                    onClick={() => router.push(`/anon?threadId=${encodeURIComponent(t.threadId)}`)}
                   />
                 ))}
               </>

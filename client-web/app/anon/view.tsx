@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Info, Send } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { getMessages, sendMessage, ackMessage } from '@/lib/relay'
@@ -29,7 +29,8 @@ function parseCompositeId(compositeId: string): { threadId: string; msgId: strin
 }
 
 export default function AnonThreadPage() {
-  const { threadId } = useParams<{ threadId: string }>()
+  const searchParams = useSearchParams()
+  const threadId = searchParams.get('threadId')
   const bootstrapped = useAppStore((s) => s.bootstrapped)
   const bootstrapError = useAppStore((s) => s.bootstrapError)
   const userId = useAppStore((s) => s.userId)
@@ -45,6 +46,7 @@ export default function AnonThreadPage() {
 
   // Load thread metadata from Dexie.
   useEffect(() => {
+    if (!threadId) return
     db.anonThreads.get(threadId).then((t) => {
       if (t) {
         setThread(t)
@@ -55,7 +57,7 @@ export default function AnonThreadPage() {
 
   // Fetch pending anon messages for this thread, then ack them.
   useEffect(() => {
-    if (!bootstrapped || !token || !userId || !thread) return
+    if (!bootstrapped || !token || !userId || !thread || !threadId) return
 
     getMessages(token)
       .then(async ({ messages: envelopes }) => {
@@ -91,6 +93,7 @@ export default function AnonThreadPage() {
   useEffect(() => {
     return ws.subscribe((env: ServerEnvelope) => {
       if (env.type !== 'message' || env.msg_type !== 'anon') return
+      if (!threadId) return
       const { threadId: envThread } = parseCompositeId(env.id)
       if (envThread !== threadId) return
 
@@ -120,7 +123,7 @@ export default function AnonThreadPage() {
   async function handleSend(e: React.FormEvent) {
     e.preventDefault()
     const text = input.trim()
-    if (!text || !token || !thread) return
+    if (!text || !token || !thread || !threadId) return
 
     setSending(true)
     const msgId = crypto.randomUUID()
@@ -147,6 +150,7 @@ export default function AnonThreadPage() {
   }
 
   async function handleReveal() {
+    if (!threadId) return
     await db.anonThreads.update(threadId, { status: 'revealed' })
     setRevealed(true)
   }
@@ -155,6 +159,14 @@ export default function AnonThreadPage() {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-zinc-400">
         {bootstrapError ? <span className="text-red-500">{bootstrapError}</span> : <span>Connecting…</span>}
+      </div>
+    )
+  }
+
+  if (!threadId) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-sm text-zinc-400">
+        Missing anonymous thread id.
       </div>
     )
   }
@@ -169,7 +181,7 @@ export default function AnonThreadPage() {
         <div className="flex-1">
           <p className="text-sm font-medium text-zinc-800 dark:text-zinc-100">Anonymous thread</p>
           {thread?.postSnippet && (
-            <p className="truncate text-xs text-zinc-400">re: "{thread.postSnippet}"</p>
+            <p className="truncate text-xs text-zinc-400">re: &quot;{thread.postSnippet}&quot;</p>
           )}
         </div>
         <button className="text-zinc-400 hover:text-zinc-600">

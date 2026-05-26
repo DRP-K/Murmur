@@ -59,7 +59,7 @@ export function ReachModal({ post, onClose }: Props) {
       })
 
       onClose()
-      router.push(`/chats/anon/${threadId}`)
+      router.push(`/anon?threadId=${encodeURIComponent(threadId)}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send')
     } finally {
@@ -88,7 +88,7 @@ export function ReachModal({ post, onClose }: Props) {
         </div>
 
         <p className="mb-4 text-xs text-zinc-400">
-          They won't know it's you. A thread opens only if they reply.
+          They won&apos;t know it&apos;s you. A thread opens only if they reply.
         </p>
 
         <form onSubmit={handleSend} className="flex flex-col gap-3">

@@ -17,9 +17,9 @@ use crate::auth::{AuthError, validate_registration, verify_auth_request};
 use crate::db::models::{NewPendingMessage, NewPost};
 use crate::db::repository;
 use crate::wire::{
-    AckPostRequest, AddFriendRequest, AuthRequest, AuthResponse, CreatePostRequest,
-    FriendInfo, FriendListResponse, MessageListResponse, PostListResponse, RegisterRequest,
-    SendMessageRequest, ServerEnvelope,
+    AckPostRequest, AddFriendRequest, AuthRequest, AuthResponse, CreatePostRequest, FriendInfo,
+    FriendListResponse, MessageListResponse, PostListResponse, RegisterRequest, SendMessageRequest,
+    ServerEnvelope,
 };
 
 #[derive(Debug)]
@@ -135,20 +135,8 @@ pub async fn post_message(
         sent_at: payload.sent_at,
     };
 
-    if state.send_to_online(&payload.recipient_id, envelope.clone()) {
-        let ack = ServerEnvelope::DeliveredAck {
-            id: payload.id.clone(),
-        };
-        state.send_to_online(&sender_id, ack);
-        info!(
-            message_id = %payload.id,
-            recipient_id = %payload.recipient_id,
-            "message delivered live"
-        );
-        return Ok(StatusCode::ACCEPTED);
-    }
-
-    // Offline relay queue.
+    // Always persist first — delivery is at-least-once.
+    // The recipient must explicitly ack (DELETE /api/messages/:id) to clear.
     let msg = NewPendingMessage {
         id: &payload.id,
         recipient_id: &payload.recipient_id,
@@ -158,14 +146,26 @@ pub async fn post_message(
         msg_type: &payload.msg_type,
         sent_at: payload.sent_at,
     };
-
     let mut conn = state.pool.get().map_err(db_error)?;
     repository::enqueue_message(&mut conn, &msg).map_err(db_error)?;
-    info!(
-        message_id = %payload.id,
-        recipient_id = %payload.recipient_id,
-        "message queued"
-    );
+
+    if state.send_to_online(&payload.recipient_id, envelope) {
+        let ack = ServerEnvelope::DeliveredAck {
+            id: payload.id.clone(),
+        };
+        state.send_to_online(&sender_id, ack);
+        info!(
+            message_id = %payload.id,
+            recipient_id = %payload.recipient_id,
+            "message delivered live, pending client ack"
+        );
+    } else {
+        info!(
+            message_id = %payload.id,
+            recipient_id = %payload.recipient_id,
+            "message queued for offline recipient"
+        );
+    }
     Ok(StatusCode::ACCEPTED)
 }
 
@@ -321,7 +321,19 @@ pub async fn add_friend(
             "friendship pair recorded"
         );
 
-        if !state.send_to_online(
+        // Always enqueue — at-least-once delivery.
+        let msg = NewPendingMessage {
+            id: &message_id,
+            recipient_id: &payload.friend_id,
+            sender_id: &user_id,
+            payload_hex: &payload_hex,
+            nonce_hex: &nonce_hex,
+            msg_type: "friend_added",
+            sent_at,
+        };
+        repository::enqueue_message(&mut conn, &msg).map_err(db_error)?;
+
+        if state.send_to_online(
             &payload.friend_id,
             ServerEnvelope::Message {
                 id: message_id.clone(),
@@ -332,26 +344,16 @@ pub async fn add_friend(
                 sent_at,
             },
         ) {
-            let msg = NewPendingMessage {
-                id: &message_id,
-                recipient_id: &payload.friend_id,
-                sender_id: &user_id,
-                payload_hex: &payload_hex,
-                nonce_hex: &nonce_hex,
-                msg_type: "friend_added",
-                sent_at,
-            };
-            repository::enqueue_message(&mut conn, &msg).map_err(db_error)?;
             info!(
                 user_id = %user_id,
                 friend_id = %payload.friend_id,
-                "friend_added notification queued"
+                "friend_added notification delivered live, pending client ack"
             );
         } else {
             info!(
                 user_id = %user_id,
                 friend_id = %payload.friend_id,
-                "friend_added notification delivered live"
+                "friend_added notification queued for offline recipient"
             );
         }
     }
@@ -365,8 +367,7 @@ pub async fn get_friends(
 ) -> Result<Json<FriendListResponse>, ApiError> {
     let user_id = authed_user(&headers, &state)?;
     let mut conn = state.pool.get().map_err(db_error)?;
-    let rows = repository::list_friends_for_user(&mut conn, &user_id)
-        .map_err(db_error)?;
+    let rows = repository::list_friends_for_user(&mut conn, &user_id).map_err(db_error)?;
     let friends: Vec<FriendInfo> = rows
         .into_iter()
         .map(|(friend_id, pubkey_hex, created_at)| FriendInfo {

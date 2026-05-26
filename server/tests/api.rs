@@ -376,7 +376,116 @@ async fn websocket_live_message_and_sender_ack() {
         }
     );
 
+    // After live delivery the message must still be in pending_messages —
+    // the server does not delete it until the client explicitly acks.
+    let still_pending = client
+        .get(format!("{base}/api/messages"))
+        .bearer_auth(&bob_token)
+        .send()
+        .await
+        .expect("get messages should send");
+    assert_eq!(still_pending.status(), StatusCode::OK);
+    let body: Value = still_pending.json().await.expect("messages json");
+    assert_eq!(
+        body["messages"]
+            .as_array()
+            .expect("messages array")
+            .iter()
+            .filter(|m| m["id"] == "live1")
+            .count(),
+        1,
+        "live-delivered message must remain in queue until client acks"
+    );
+
     alice_ws.close(None).await.expect("alice close should send");
+    bob_ws.close(None).await.expect("bob close should send");
+    handle.abort();
+}
+
+#[tokio::test]
+async fn live_message_requires_explicit_ack_to_clear() {
+    let (base, handle) = spawn_server().await;
+    let client = reqwest::Client::new();
+    let alice = test_user(13);
+    let bob = test_user(14);
+    register_user_http(&client, &base, &alice).await;
+    register_user_http(&client, &base, &bob).await;
+    let alice_token = auth_user_http(&client, &base, &alice).await;
+    let bob_token = auth_user_http(&client, &base, &bob).await;
+
+    let ws_base = base.replace("http://", "ws://");
+    let (mut bob_ws, _) = connect_async(format!("{ws_base}/api/ws?token={bob_token}"))
+        .await
+        .expect("bob websocket should connect");
+
+    // Send while Bob is online — live delivery path.
+    client
+        .post(format!("{base}/api/messages"))
+        .bearer_auth(&alice_token)
+        .json(&json!({
+            "id": "ack-test-1",
+            "recipient_id": bob.user_id,
+            "payload_hex": "aabb",
+            "nonce_hex": "000000000000000000000000",
+            "msg_type": "dm",
+            "sent_at": 200,
+        }))
+        .send()
+        .await
+        .expect("send should succeed");
+
+    // Bob receives via WS.
+    let _ = timeout(Duration::from_secs(2), bob_ws.next())
+        .await
+        .expect("bob should receive message");
+
+    // Message is still in pending — no ack yet.
+    let pending: Value = client
+        .get(format!("{base}/api/messages"))
+        .bearer_auth(&bob_token)
+        .send()
+        .await
+        .expect("get messages should send")
+        .json()
+        .await
+        .expect("messages json");
+    assert!(
+        pending["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m["id"] == "ack-test-1"),
+        "message must be pending before ack"
+    );
+
+    // Bob acks.
+    let ack = client
+        .delete(format!("{base}/api/messages/ack-test-1"))
+        .bearer_auth(&bob_token)
+        .send()
+        .await
+        .expect("ack should send");
+    assert_eq!(ack.status(), StatusCode::NO_CONTENT);
+
+    // Message is gone.
+    let after: Value = client
+        .get(format!("{base}/api/messages"))
+        .bearer_auth(&bob_token)
+        .send()
+        .await
+        .expect("get messages should send")
+        .json()
+        .await
+        .expect("messages json");
+    assert!(
+        after["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|m| m["id"] != "ack-test-1"),
+        "message must be gone after ack"
+    );
+
     bob_ws.close(None).await.expect("bob close should send");
     handle.abort();
 }

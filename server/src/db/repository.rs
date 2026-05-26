@@ -199,7 +199,11 @@ pub fn list_friends_for_user(
     friendships::table
         .inner_join(users::table.on(friendships::user_b.eq(users::user_id)))
         .filter(friendships::user_a.eq(user_id))
-        .select((friendships::user_b, users::pubkey_hex, friendships::created_at))
+        .select((
+            friendships::user_b,
+            users::pubkey_hex,
+            friendships::created_at,
+        ))
         .load(conn)
 }
 

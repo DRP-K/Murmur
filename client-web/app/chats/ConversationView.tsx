@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Send } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { sendMessage, getMessages, ackMessage } from '@/lib/relay'
@@ -18,7 +18,8 @@ function extractFriendId(conversationId: string, myUserId: string): string {
 }
 
 export default function ConversationPage() {
-  const { id: conversationId } = useParams<{ id: string }>()
+  const searchParams = useSearchParams()
+  const conversationId = searchParams.get('id')
   const bootstrapped = useAppStore((s) => s.bootstrapped)
   const bootstrapError = useAppStore((s) => s.bootstrapError)
   const userId = useAppStore((s) => s.userId)
@@ -29,13 +30,16 @@ export default function ConversationPage() {
   const clearUnread = useAppStore((s) => s.clearUnread)
   const router = useRouter()
 
-  const messages = messagesByConv[conversationId] ?? []
+  const messages = useMemo(
+    () => (conversationId ? (messagesByConv[conversationId] ?? []) : []),
+    [conversationId, messagesByConv],
+  )
   const [friendName, setFriendName] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  const friendId = userId ? extractFriendId(conversationId, userId) : null
+  const friendId = userId && conversationId ? extractFriendId(conversationId, userId) : null
 
   useEffect(() => {
     if (!friendId) return
@@ -44,13 +48,14 @@ export default function ConversationPage() {
 
   // Clear unread badge when the conversation is opened.
   useEffect(() => {
+    if (!conversationId) return
     clearUnread(conversationId)
   }, [conversationId, clearUnread])
 
   // On mount: fetch any pending messages for this conversation from the server,
   // add them to the store (dedup), and ack them so they clear the queue.
   useEffect(() => {
-    if (!bootstrapped || !token || !userId) return
+    if (!bootstrapped || !token || !userId || !conversationId) return
     getMessages(token).then(({ messages: pending }) => {
       for (const env of pending) {
         if (env.type !== 'message' || env.msg_type !== 'dm') continue
@@ -95,7 +100,7 @@ export default function ConversationPage() {
   async function handleSend(e: React.FormEvent) {
     e.preventDefault()
     const text = input.trim()
-    if (!text || !token || !friendId || !userId) return
+    if (!text || !token || !friendId || !userId || !conversationId) return
 
     setSending(true)
     const id = crypto.randomUUID()
@@ -125,6 +130,14 @@ export default function ConversationPage() {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-zinc-400">
         {bootstrapError ? <span className="text-red-500">{bootstrapError}</span> : <span>Connecting…</span>}
+      </div>
+    )
+  }
+
+  if (!conversationId) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-sm text-zinc-400">
+        Missing conversation id.
       </div>
     )
   }

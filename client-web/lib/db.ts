@@ -61,6 +61,15 @@ export interface StoredConversation {
   unread: number
 }
 
+// Persisted anon thread message — survives page refresh.
+export interface StoredAnonMessage {
+  id: string        // composite: threadId|msgId
+  threadId: string  // indexed for per-thread queries
+  content: string
+  sentAt: number
+  isOwn: boolean
+}
+
 class MurmurDatabase extends Dexie {
   identity!: EntityTable<Identity, 'userId'>
   friends!: EntityTable<LocalFriend, 'userId'>
@@ -68,6 +77,7 @@ class MurmurDatabase extends Dexie {
   messages!: EntityTable<StoredMessage, 'id'>
   conversations!: EntityTable<StoredConversation, 'conversationId'>
   posts!: EntityTable<StoredPost, 'id'>
+  anonMessages!: EntityTable<StoredAnonMessage, 'id'>
 
   constructor() {
     super('murmur')
@@ -85,6 +95,9 @@ class MurmurDatabase extends Dexie {
     })
     this.version(4).stores({
       posts: 'id, timestamp',
+    })
+    this.version(5).stores({
+      anonMessages: 'id, threadId, sentAt',
     })
   }
 }

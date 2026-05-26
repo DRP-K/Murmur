@@ -7,7 +7,7 @@ import { useAppStore } from '@/lib/store'
 import { getMessages, sendMessage, ackMessage } from '@/lib/relay'
 import { encodePayload, decodePayload } from '@/lib/crypto'
 import * as ws from '@/lib/ws'
-import { db, type AnonThread } from '@/lib/db'
+import { db, type AnonThread, type StoredAnonMessage } from '@/lib/db'
 import { MessageBubble } from '@/components/MessageBubble'
 import type { ServerEnvelope } from '@/lib/types'
 
@@ -55,36 +55,48 @@ export default function AnonThreadPage() {
     })
   }, [threadId])
 
+  // Load persisted messages from Dexie on mount.
+  useEffect(() => {
+    if (!threadId) return
+    db.anonMessages
+      .where('threadId').equals(threadId)
+      .sortBy('sentAt')
+      .then((stored) => {
+        setMessages(stored.map((m) => ({ id: m.id, content: m.content, sentAt: m.sentAt, isOwn: m.isOwn })))
+      })
+  }, [threadId])
+
   // Fetch pending anon messages for this thread, then ack them.
   useEffect(() => {
     if (!bootstrapped || !token || !userId || !thread || !threadId) return
 
     getMessages(token)
       .then(async ({ messages: envelopes }) => {
-        const mine: LocalMessage[] = []
+        const incoming: StoredAnonMessage[] = []
         for (const env of envelopes) {
           if (env.type !== 'message' || env.msg_type !== 'anon') continue
           const { threadId: envThread } = parseCompositeId(env.id)
           if (envThread !== threadId) continue
 
-          // from_author = env.sender_id is NOT the initiator
-          // If I'm the initiator: from_author = (sender != me) = message from author
-          // isOwn = (isInitiator && !from_author) || (!isInitiator && from_author)
-          //       = isInitiator XOR from_author  (inverted: true means I sent it)
           const fromAuthor = env.sender_id !== userId && thread.isInitiator === 1
             ? true
             : env.sender_id === userId
           const isOwn = (thread.isInitiator === 1) !== fromAuthor
 
-          mine.push({
+          incoming.push({
             id: env.id,
+            threadId,
             content: decodePayload(env.payload_hex),
             sentAt: env.sent_at,
             isOwn,
           })
           await ackMessage(token, env.id).catch(() => {})
         }
-        setMessages(mine.sort((a, b) => a.sentAt - b.sentAt))
+        if (incoming.length > 0) {
+          await db.anonMessages.bulkPut(incoming)
+          const all = await db.anonMessages.where('threadId').equals(threadId).sortBy('sentAt')
+          setMessages(all.map((m) => ({ id: m.id, content: m.content, sentAt: m.sentAt, isOwn: m.isOwn })))
+        }
       })
       .catch(console.error)
   }, [bootstrapped, token, userId, thread, threadId])
@@ -107,10 +119,18 @@ export default function AnonThreadPage() {
         : env.sender_id === myId
       const isOwn = isInitiator !== fromAuthor
 
+      const msg: StoredAnonMessage = {
+        id: env.id,
+        threadId,
+        content: decodePayload(env.payload_hex),
+        sentAt: env.sent_at,
+        isOwn,
+      }
+      db.anonMessages.put(msg).catch(console.error)
       setMessages((prev) =>
         prev.some((m) => m.id === env.id)
           ? prev
-          : [...prev, { id: env.id, content: decodePayload(env.payload_hex), sentAt: env.sent_at, isOwn }],
+          : [...prev, { id: msg.id, content: msg.content, sentAt: msg.sentAt, isOwn: msg.isOwn }],
       )
       if (tok) ackMessage(tok, env.id).catch(() => {})
     })
@@ -130,6 +150,8 @@ export default function AnonThreadPage() {
     const sentAt = Math.floor(Date.now() / 1000)
     const compositeId = `${threadId}|${msgId}`
 
+    const newMsg: StoredAnonMessage = { id: compositeId, threadId, content: text, sentAt, isOwn: true }
+    db.anonMessages.put(newMsg).catch(console.error)
     setMessages((prev) => [...prev, { id: compositeId, content: text, sentAt, isOwn: true }])
     setInput('')
 

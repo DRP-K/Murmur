@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Send } from 'lucide-react'
-import { useAppStore, type LocalMessage } from '@/lib/store'
-import { sendMessage } from '@/lib/relay'
+import { useAppStore } from '@/lib/store'
+import { sendMessage, getMessages, ackMessage } from '@/lib/relay'
 import { encodePayload, decodePayload } from '@/lib/crypto'
 import * as ws from '@/lib/ws'
 import { db } from '@/lib/db'
@@ -41,30 +41,45 @@ export default function ConversationPage() {
     db.friends.get(friendId).then((f) => setFriendName(f?.nickname ?? null))
   }, [friendId])
 
-  // Subscribe to WS for new incoming messages and delivery acks.
+  // On mount: fetch any pending messages for this conversation from the server,
+  // add them to the store (dedup), and ack them so they clear the queue.
   useEffect(() => {
-    return ws.subscribe((env: ServerEnvelope) => {
-      const myId = useAppStore.getState().userId
-      if (!myId) return
-
-      if (env.type === 'message' && env.msg_type === 'dm') {
-        const convId = [myId, env.sender_id].sort().join('-')
-        if (convId !== conversationId) return
-        const msg: LocalMessage = {
+    if (!bootstrapped || !token || !userId) return
+    getMessages(token).then(({ messages: pending }) => {
+      for (const env of pending) {
+        if (env.type !== 'message' || env.msg_type !== 'dm') continue
+        const convId = [userId, env.sender_id].sort().join('-')
+        if (convId !== conversationId) continue
+        addMessage(convId, {
           id: env.id,
           content: decodePayload(env.payload_hex),
           sentAt: env.sent_at,
-          isOwn: env.sender_id === myId,
+          isOwn: env.sender_id === userId,
           status: 'delivered',
-        }
-        addMessage(convId, msg)
+        })
+        ackMessage(token, env.id).catch(() => {})
       }
+    }).catch(console.error)
+  }, [bootstrapped, token, userId, conversationId, addMessage])
 
+  // WS: ack DMs that arrive while the conversation is open (useMessageSink
+  // already adds them to the store); update status for sender's own messages.
+  useEffect(() => {
+    return ws.subscribe((env: ServerEnvelope) => {
       if (env.type === 'delivered_ack') {
         updateMessageStatus(env.id, 'delivered')
+        return
+      }
+      if (env.type === 'message' && env.msg_type === 'dm') {
+        const myId = useAppStore.getState().userId
+        if (!myId) return
+        const convId = [myId, env.sender_id].sort().join('-')
+        if (convId !== conversationId) return
+        const tok = useAppStore.getState().token
+        if (tok) ackMessage(tok, env.id).catch(() => {})
       }
     })
-  }, [conversationId, addMessage, updateMessageStatus])
+  }, [conversationId, updateMessageStatus])
 
   // Scroll to bottom when messages change.
   useEffect(() => {

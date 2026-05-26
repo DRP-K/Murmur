@@ -173,14 +173,11 @@ export default function ChatsPage() {
       const myId = useAppStore.getState().userId
       if (!myId) return
 
-      // DMs: update conversation list + global store.
+      // DMs: update conversation list UI state.
+      // useMessageSink (global) already added the message to the Zustand store.
       if (env.msg_type === 'dm') {
         const content = decode(env.payload_hex)
         const convId = makeConversationId(myId, env.sender_id)
-        addMessage(convId, {
-          id: env.id, content, sentAt: env.sent_at,
-          isOwn: env.sender_id === myId, status: 'delivered',
-        })
         setConversations((prev) => {
           const existing = prev.find((c) => c.conversationId === convId)
           const updated: ConversationSummary = {

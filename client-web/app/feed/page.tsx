@@ -74,15 +74,15 @@ export default function FeedPage() {
       .catch((err) => console.error('[feed] getPosts failed:', err))
   }, [bootstrapped, token, addPosts])
 
-  // Subscribe to WS for incoming posts — add to global store + ack.
+  // Ack posts that arrive via WS while the feed is open.
+  // usePostSink (in BootstrapShell) already adds them to the store.
   useEffect(() => {
     return ws.subscribe((env) => {
       if (env.type !== 'post') return
       const t = useAppStore.getState().token
-      addPost(toPost(env))
       if (t) ackPost(t, env.id).catch(() => {})
     })
-  }, [addPost])
+  }, [])
 
   async function handlePost(content: string, expiresAt: number | null) {
     const t = useAppStore.getState().token

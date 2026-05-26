@@ -4,6 +4,8 @@ import { useEffect } from 'react'
 import * as ws from '@/lib/ws'
 import { db } from '@/lib/db'
 import { ecdh, decodePayload } from '@/lib/crypto'
+import { ackMessage } from '@/lib/relay'
+import { useAppStore } from '@/lib/store'
 import type { ServerEnvelope } from '@/lib/types'
 
 /**
@@ -50,6 +52,9 @@ export async function processFriendAdded(
     blockedAt: null,
   })
   console.log('[friend_sink] friend stored in Dexie:', friendId.slice(0, 8))
+
+  const tok = useAppStore.getState().token
+  if (tok) ackMessage(tok, env.id).catch(console.error)
 }
 
 /**

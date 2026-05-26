@@ -2,8 +2,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 use axum::Router;
+use axum::http::{HeaderValue, Method};
 use axum::routing::{delete, get, post};
 use tokio::sync::mpsc;
+use tower_http::cors::{Any, CorsLayer};
 use tracing::{debug, warn};
 
 use crate::api;
@@ -85,6 +87,11 @@ impl AppState {
 }
 
 pub fn router(state: AppState) -> Router {
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
+        .allow_headers(Any);
+
     Router::new()
         .route("/api/register", post(api::register))
         .route("/api/auth", post(api::auth))
@@ -97,5 +104,6 @@ pub fn router(state: AppState) -> Router {
         .route("/api/posts/ack", post(api::ack_post))
         .route("/api/friends", get(api::get_friends).post(api::add_friend))
         .route("/api/ws", get(api::ws_handler))
+        .layer(cors)
         .with_state(state)
 }

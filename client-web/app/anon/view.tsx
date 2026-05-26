@@ -35,6 +35,7 @@ export default function AnonThreadPage() {
   const bootstrapError = useAppStore((s) => s.bootstrapError)
   const userId = useAppStore((s) => s.userId)
   const token = useAppStore((s) => s.token)
+  const addMessages = useAppStore((s) => s.addMessages)
   const router = useRouter()
 
   const [thread, setThread] = useState<AnonThread | null>(null)
@@ -140,6 +141,24 @@ export default function AnonThreadPage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // When the post author replies, auto-reveal and migrate the whole thread to DM.
+  // Initiator: triggered when they receive the author's reply (isOwn === false).
+  // Author: triggered when they send their first reply (isOwn === true).
+  useEffect(() => {
+    if (!userId || !thread || revealed) return
+    const authorReplied = thread.isInitiator === 1
+      ? messages.some((m) => !m.isOwn)
+      : messages.some((m) => m.isOwn)
+    if (!authorReplied) return
+    const convId = [userId, thread.peerId].sort().join('-')
+    addMessages(convId, messages.map((m) => ({
+      id: m.id, content: m.content, sentAt: m.sentAt, isOwn: m.isOwn, status: 'delivered' as const,
+    })))
+    db.anonThreads.update(thread.id, { status: 'revealed' }).catch(console.error)
+    setRevealed(true)
+    router.replace(`/chats?id=${encodeURIComponent(convId)}`)
+  }, [messages, thread, revealed, userId, addMessages, router])
+
   async function handleSend(e: React.FormEvent) {
     e.preventDefault()
     const text = input.trim()
@@ -172,9 +191,14 @@ export default function AnonThreadPage() {
   }
 
   async function handleReveal() {
-    if (!threadId) return
+    if (!threadId || !userId || !thread) return
+    const convId = [userId, thread.peerId].sort().join('-')
+    addMessages(convId, messages.map((m) => ({
+      id: m.id, content: m.content, sentAt: m.sentAt, isOwn: m.isOwn, status: 'delivered' as const,
+    })))
     await db.anonThreads.update(threadId, { status: 'revealed' })
     setRevealed(true)
+    router.replace(`/chats?id=${encodeURIComponent(convId)}`)
   }
 
   if (!bootstrapped) {

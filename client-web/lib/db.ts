@@ -1,4 +1,4 @@
-import Dexie, { type EntityTable } from 'dexie'
+import Dexie, { type EntityTable, type Table } from 'dexie'
 
 export interface Identity {
   userId: string
@@ -49,6 +49,19 @@ export interface StoredPost {
   timestamp: number
   expires_at: number | null
   is_own: boolean
+  audienceTagIds?: string[]  // local-only; never transmitted to relay
+}
+
+export interface LocalTag {
+  id: string
+  name: string
+  color?: string
+  createdAt: number
+}
+
+export interface LocalFriendTag {
+  friendId: string
+  tagId: string
 }
 
 // Persisted conversation summary — mirrors ConversationMeta in the Zustand store.
@@ -78,6 +91,8 @@ class MurmurDatabase extends Dexie {
   conversations!: EntityTable<StoredConversation, 'conversationId'>
   posts!: EntityTable<StoredPost, 'id'>
   anonMessages!: EntityTable<StoredAnonMessage, 'id'>
+  tags!: EntityTable<LocalTag, 'id'>
+  friendTags!: Table<LocalFriendTag, [string, string]>
 
   constructor() {
     super('murmur')
@@ -98,6 +113,10 @@ class MurmurDatabase extends Dexie {
     })
     this.version(5).stores({
       anonMessages: 'id, threadId, sentAt',
+    })
+    this.version(6).stores({
+      tags: 'id, name, createdAt',
+      friendTags: '[friendId+tagId], friendId, tagId',
     })
   }
 }

@@ -36,7 +36,50 @@ Friends are added by sharing a QR code **in person** (or by entering a user ID d
 2. Friend row inserted into local `friends` table.
 3. Relay is notified via `POST /api/friends` (fire-and-forget). Server records both directed friendship edges and queues a `friend_added` notification to the other party so they can auto-add the adder locally without a QR scan.
 
+**Nickname:** each friend row carries a `nickname` field, seeded from the QR payload but freely editable by the user at any time. Nicknames are local-only — they are never transmitted to the relay or to the friend. Nicknames and tags are independent; a friend can have a nickname without any tags and vice-versa.
+
+**Friend settings entry point:** the DM conversation screen has a `⋯` (three-dots) icon in the top-right corner. Tapping it opens a bottom sheet or menu with at minimum:
+- **Edit nickname** — inline text field, pre-filled with the current nickname.
+- **Manage tags** — multi-select list of all user-defined tags, with the friend's current tags checked; includes a shortcut to create a new tag inline.
+- **Block / Unblock**
+
+This is the canonical place to change per-friend metadata; there is no separate "friend profile" screen.
+
 **Block:** sets `blocked_at` timestamp; blocked friends are excluded from all queries.
+
+---
+
+## Tag System
+
+Tags are user-defined, device-local labels. They exist purely on the client — the relay never sees tag names, only the resolved `recipient_ids` list that results from applying them. This means no server changes are required and no social-graph metadata is leaked beyond what already exists in the friend list.
+
+### Friend tags
+
+A friend can carry zero or more tags (e.g. `"close friends"`, `"college"`, `"work"`). The relationship is many-to-many: one friend can belong to multiple groups, and one tag can cover many friends.
+
+- Tags are created, renamed, and deleted by the user.
+- Assigning or removing a tag from a friend is a local-only write to `friend_tags`.
+- Blocked friends remain excluded from all queries regardless of tags.
+- Tags are separate from nicknames — both can coexist freely on any friend.
+
+### Post audience
+
+When composing a post the author chooses an **audience**:
+
+| Audience option | Resolved `recipient_ids` |
+|---|---|
+| All friends (default) | Every non-blocked friend |
+| One or more tags | Union of all non-blocked friends carrying any of the selected tags |
+
+Tag resolution happens entirely on the client before the relay call. The resulting `recipient_ids` list is indistinguishable from a manually assembled list — recipients never learn which tag, if any, caused them to receive a post.
+
+The locally stored post row carries an optional `audience_tag_ids` field (JSON array of tag IDs) so the UI can display how the post was scoped, but this field is never transmitted to the relay.
+
+### Invariants
+
+- A tag with no members is valid (it produces an empty recipient list).
+- Deleting a tag removes all `friend_tags` rows for it and clears `audience_tag_ids` references in local posts (set to `null`).
+- Tag names are free-form strings with no uniqueness enforcement — users can have two tags named `"friends"`. The `id` (UUID) is the stable identifier.
 
 ---
 
@@ -160,6 +203,8 @@ All messages on the relay use a JSON envelope:
 | `reactions` | `(post_id, emoji)` | Local-only reaction counts |
 | `anon_threads` | `id` | Ephemeral keypairs + thread metadata |
 | `anon_messages` | `id` | Anon thread messages |
+| `tags` | `id` | User-defined friend-group labels (name, optional color) |
+| `friend_tags` | `(friend_id, tag_id)` | Many-to-many mapping of friends to tags |
 
 ---
 

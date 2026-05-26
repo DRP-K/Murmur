@@ -177,6 +177,16 @@ function ChatListPage() {
     )
   }
 
+  // Build a fresh nickname lookup from the Dexie-loaded friends list so that
+  // conversation rows always reflect the latest nickname even if the Zustand
+  // store has a stale value from before the user last edited it.
+  const nickMap = new Map(friends.map((f) => [f.friendId, f.friendName]))
+
+  function displayName(friendId: string, storedName: string | null): string {
+    const nick = nickMap.get(friendId) ?? storedName
+    return nick ?? friendId
+  }
+
   // Friends who already have a conversation move out of the friends-only section.
   const conversationFriendIds = new Set(conversations.map((c) => c.friendId))
   const friendsOnly = friends.filter((f) => !conversationFriendIds.has(f.friendId))
@@ -197,7 +207,7 @@ function ChatListPage() {
             {conversations.map((c: ConversationMeta) => (
               <ChatRow
                 key={c.conversationId}
-                name={c.friendName ?? c.friendId.slice(0, 8) + '…'}
+                name={displayName(c.friendId, c.friendName)}
                 preview={c.lastMessage}
                 timestamp={c.lastAt}
                 unread={c.unread}
@@ -213,7 +223,7 @@ function ChatListPage() {
                 {friendsOnly.map((f) => (
                   <ChatRow
                     key={f.friendId}
-                    name={f.friendName ?? f.friendId.slice(0, 8) + '…'}
+                    name={f.friendName ?? f.friendId}
                     preview="No messages yet — say hi!"
                     timestamp={0}
                     onClick={() => router.push(`/chats?id=${encodeURIComponent(f.conversationId)}`)}

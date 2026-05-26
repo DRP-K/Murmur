@@ -1,0 +1,25 @@
+networks:
+  cloudflared:
+    external: true
+
+services:
+  murmur-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    image: ${PRODUCTION_IMAGE:-murmur-server:production}
+    container_name: ${PRODUCTION_CONTAINER_NAME:-murmur-server-production}
+    restart: always
+    environment:
+      DATABASE_URL: ${PRODUCTION_DATABASE_URL:-/var/app/data/production.sqlite3}
+      PORT: ${PRODUCTION_CONTAINER_PORT}
+      BIND_ADDR: 0.0.0.0:${PRODUCTION_CONTAINER_PORT}
+    volumes:
+      - murmur-production-data:/var/app/data
+    networks:
+      cloudflared:
+        ipv4_address: ${PRODUCTION_IPV4_ADDRESS}
+
+
+volumes:
+  murmur-production-data:

@@ -31,13 +31,6 @@ variables:
       - .cargo/git/
       - server/target/
 
-.docker-host:
-  tags:
-    - murmur-staged
-  before_script:
-    - for i in $(seq 1 30); do docker info && break || sleep 1; done
-    - docker info
-
 fmt-check:
   stage: test
   extends: .cargo-cache
@@ -59,7 +52,8 @@ test-server:
 
 package-staged-image:
   stage: package
-  extends: .docker-host
+  tags:
+    - murmur-staged
   needs:
     - test-server
   script:
@@ -67,7 +61,6 @@ package-staged-image:
 
 package-tsuru-image:
   stage: package
-  extends: .docker-host
   needs:
     - test-server
   script:
@@ -75,7 +68,8 @@ package-tsuru-image:
 
 deploy-staged:
   stage: deploy
-  extends: .docker-host
+  tags:
+    - murmur-staged
   needs:
     - package-staged-image
   when: manual
@@ -95,10 +89,9 @@ deploy-production:
     - when: never
   environment:
     name: production
-  before_script:
-    - test -n "$TSURU_APP_PRODUCTION"
   script:
-    - tsuru app deploy -a "$TSURU_APP_PRODUCTION" --dockerfile Dockerfile.tsuru -- .
+    - docker compose -f compose.production.yml up -d --build --remove-orphans
+    - docker compose -f compose.production.yml ps
 
 build-client-web:
   stage: build

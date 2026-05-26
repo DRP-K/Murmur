@@ -58,6 +58,14 @@ export function ReachModal({ post, onClose }: Props) {
         sent_at: sentAt,
       })
 
+      await db.anonMessages.put({
+        id: `${threadId}|${msgId}`,
+        threadId,
+        content: text,
+        sentAt,
+        isOwn: true,
+      })
+
       onClose()
       router.push(`/anon?threadId=${encodeURIComponent(threadId)}`)
     } catch (err) {

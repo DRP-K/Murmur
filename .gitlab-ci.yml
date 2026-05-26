@@ -103,7 +103,7 @@ build-client-web:
     paths:
       - client-web/node_modules/
   variables:
-    NEXT_PUBLIC_RELAY_URL: ${NEXT_PUBLIC_RELAY_URL:-https://murmur.bajzc.com}
+    NEXT_PUBLIC_RELAY_URL: "https://murmur.bajzc.com"
   script:
     - cd client-web
     - npm ci

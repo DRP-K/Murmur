@@ -41,6 +41,16 @@ export interface StoredMessage {
   status: 'sent' | 'delivered'
 }
 
+// Persisted post — mirrors Post in types.ts.
+export interface StoredPost {
+  id: string
+  author_id: string
+  content: string
+  timestamp: number
+  expires_at: number | null
+  is_own: boolean
+}
+
 // Persisted conversation summary — mirrors ConversationMeta in the Zustand store.
 export interface StoredConversation {
   conversationId: string
@@ -57,6 +67,7 @@ class MurmurDatabase extends Dexie {
   anonThreads!: EntityTable<AnonThread, 'id'>
   messages!: EntityTable<StoredMessage, 'id'>
   conversations!: EntityTable<StoredConversation, 'conversationId'>
+  posts!: EntityTable<StoredPost, 'id'>
 
   constructor() {
     super('murmur')
@@ -71,6 +82,9 @@ class MurmurDatabase extends Dexie {
     this.version(3).stores({
       messages: 'id, convId, sentAt',
       conversations: 'conversationId',
+    })
+    this.version(4).stores({
+      posts: 'id, timestamp',
     })
   }
 }

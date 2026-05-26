@@ -92,9 +92,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   loadFromDexie: async () => {
-    const [storedMsgs, storedConvs] = await Promise.all([
+    const [storedMsgs, storedConvs, storedPosts] = await Promise.all([
       db.messages.toArray(),
       db.conversations.toArray(),
+      db.posts.orderBy('timestamp').reverse().toArray(),
     ])
 
     const messagesByConv: Record<string, LocalMessage[]> = {}
@@ -109,22 +110,29 @@ export const useAppStore = create<AppStore>((set, get) => ({
       storedConvs.map((c) => [c.conversationId, c]),
     )
 
-    set({ messagesByConv, conversations })
+    set({ messagesByConv, conversations, posts: storedPosts })
   },
 
-  addPosts: (incoming) =>
+  addPosts: (incoming) => {
     set((state) => {
       const existing = new Set(state.posts.map((p) => p.id))
       const fresh = incoming.filter((p) => !existing.has(p.id))
       if (fresh.length === 0) return state
       return { posts: [...fresh.reverse(), ...state.posts] }
-    }),
+    })
+    const existing = new Set(get().posts.map((p) => p.id))
+    for (const post of incoming) {
+      if (!existing.has(post.id)) db.posts.put(post).catch(console.error)
+    }
+  },
 
-  addPost: (post) =>
+  addPost: (post) => {
     set((state) => {
       if (state.posts.some((p) => p.id === post.id)) return state
       return { posts: [post, ...state.posts] }
-    }),
+    })
+    db.posts.put(post).catch(console.error)
+  },
 
   addMessage: (convId, msg) => {
     set((state) => {

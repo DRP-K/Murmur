@@ -6,6 +6,7 @@ import { useAppStore } from '@/lib/store'
 import { getPosts, createPost, ackPost } from '@/lib/relay'
 import * as ws from '@/lib/ws'
 import { db } from '@/lib/db'
+import { resolveTags } from '@/lib/tags'
 import { PostCard } from '@/components/PostCard'
 import { ComposeSheet } from '@/components/ComposeSheet'
 import { ReachModal } from '@/components/ReachModal'
@@ -84,14 +85,18 @@ export default function FeedPage() {
     })
   }, [])
 
-  async function handlePost(content: string, expiresAt: number | null) {
+  async function handlePost(content: string, expiresAt: number | null, audienceTagIds: string[] | null) {
     const t = useAppStore.getState().token
     if (!t) throw new Error('not authenticated')
 
-    const friends = await db.friends
-      .filter((f) => f.blockedAt === null)
-      .toArray()
-    const recipientIds = friends.map((f) => f.userId)
+    let recipientIds: string[]
+    if (audienceTagIds && audienceTagIds.length > 0) {
+      const resolved = await resolveTags(audienceTagIds)
+      recipientIds = [...resolved]
+    } else {
+      const friends = await db.friends.filter((f) => f.blockedAt === null).toArray()
+      recipientIds = friends.map((f) => f.userId)
+    }
 
     const id = crypto.randomUUID()
     const timestamp = Math.floor(Date.now() / 1000)

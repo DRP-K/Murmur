@@ -3,13 +3,22 @@
 import { useEffect, useState } from 'react'
 import { X, Send, ChevronDown, ChevronUp, Sparkles } from 'lucide-react'
 import { db, type LocalTag } from '@/lib/db'
-import { PostSuggestions } from './PostSuggestions'
+import { PostSuggestions, type SelectedSuggestion } from './PostSuggestions'
 
 interface Props {
   open: boolean
   onClose: () => void
-  onSubmit: (content: string, expiresAt: number | null, audienceTagIds: string[] | null) => Promise<void>
+  onSubmit: (
+    content: string,
+    expiresAt: number | null,
+    audienceTagIds: string[] | null,
+    category?: string | null,
+    mediaRefName?: string | null,
+    imageUrl?: string | null,
+  ) => Promise<void>
 }
+
+const CATEGORY_EMOJI: Record<string, string> = { movies: '🎬', music: '🎵', games: '🎮' }
 
 const EXPIRY_OPTIONS = [
   { label: 'Never', value: null },
@@ -26,6 +35,9 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set())
   const [audienceOpen, setAudienceOpen] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [mediaCategory, setMediaCategory] = useState<string | null>(null)
+  const [mediaRefName, setMediaRefName] = useState<string | null>(null)
+  const [mediaImageUrl, setMediaImageUrl] = useState<string | null>(null)
 
   useEffect(() => {
     if (open) db.tags.orderBy('name').toArray().then(setAllTags)
@@ -55,11 +67,14 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
     try {
       const expiresAt = expirySeconds ? Math.floor(Date.now() / 1000) + expirySeconds : null
       const tagIds = selectedTagIds.size > 0 ? [...selectedTagIds] : null
-      await onSubmit(content.trim(), expiresAt, tagIds)
+      await onSubmit(content.trim(), expiresAt, tagIds, mediaCategory, mediaRefName, mediaImageUrl)
       setContent('')
       setExpirySeconds(null)
       setSelectedTagIds(new Set())
       setAudienceOpen(false)
+      setMediaCategory(null)
+      setMediaRefName(null)
+      setMediaImageUrl(null)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to post')
@@ -103,10 +118,26 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
             </button>
           </div>
 
+          {mediaRefName && (
+            <div className="flex items-center gap-2 rounded-lg bg-zinc-100 px-3 py-1.5 text-xs dark:bg-zinc-800">
+              <span>{CATEGORY_EMOJI[mediaCategory ?? ''] ?? ''} {mediaRefName}</span>
+              <button
+                type="button"
+                onClick={() => { setMediaCategory(null); setMediaRefName(null); setMediaImageUrl(null) }}
+                className="ml-auto text-zinc-400 hover:text-zinc-600"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
+
           {showSuggestions && (
             <PostSuggestions
-              onSelect={(text) => {
-                setContent(text)
+              onSelect={(s: SelectedSuggestion) => {
+                setContent(s.text)
+                setMediaCategory(s.category)
+                setMediaRefName(s.mediaRefName)
+                setMediaImageUrl(s.imageUrl)
                 setShowSuggestions(false)
               }}
             />

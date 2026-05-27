@@ -66,8 +66,15 @@ const TABS: { key: Category; label: string }[] = [
   { key: 'games', label: '🎮 Game' },
 ]
 
+export interface SelectedSuggestion {
+  text: string
+  category: Category
+  mediaRefName: string
+  imageUrl: string | null
+}
+
 interface Props {
-  onSelect: (text: string) => void
+  onSelect: (suggestion: SelectedSuggestion) => void
 }
 
 export function PostSuggestions({ onSelect }: Props) {
@@ -156,7 +163,13 @@ export function PostSuggestions({ onSelect }: Props) {
               <button
                 key={item.id}
                 type="button"
-                onClick={() => onSelect(buildTemplate(tab, item))}
+                onClick={() => {
+                  const mediaRefName =
+                    tab === 'movies' ? (item as MovieItem).title
+                    : tab === 'music' ? (item as MusicItem).track
+                    : (item as GameItem).name
+                  onSelect({ text: buildTemplate(tab, item), category: tab, mediaRefName, imageUrl: itemImage(tab, item) })
+                }}
                 className="flex-shrink-0 w-20 rounded-lg overflow-hidden border border-zinc-200 bg-white hover:border-zinc-400 transition-colors dark:border-zinc-600 dark:bg-zinc-700 dark:hover:border-zinc-400 text-left"
               >
                 {img ? (

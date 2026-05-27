@@ -9,6 +9,7 @@ import { ecdh } from '@/lib/crypto'
 import { addFriend } from '@/lib/relay'
 import { db } from '@/lib/db'
 import { QrScanner } from '@/components/QrScanner'
+import { FriendSetupModal } from '@/components/FriendSetupModal'
 import { TabBar } from '@/components/TabBar'
 import type { QrPayload } from '@/lib/types'
 
@@ -27,6 +28,7 @@ export default function FriendsPage() {
   const [scanResult, setScanResult] = useState<QrPayload | null>(null)
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [setupFriend, setSetupFriend] = useState<{ friendId: string; nickname: string | null } | null>(null)
 
   // Manual "add by ID" fields.
   const [manualId, setManualId] = useState('')
@@ -91,6 +93,7 @@ export default function FriendsPage() {
       setManualId('')
       setManualPubkey('')
       setManualNickname('')
+      setSetupFriend({ friendId, nickname })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add friend')
     } finally {
@@ -223,6 +226,14 @@ export default function FriendsPage() {
       </main>
 
       <TabBar />
+
+      {setupFriend && (
+        <FriendSetupModal
+          friendId={setupFriend.friendId}
+          initialNickname={setupFriend.nickname}
+          onDone={() => setSetupFriend(null)}
+        />
+      )}
     </>
   )
 }

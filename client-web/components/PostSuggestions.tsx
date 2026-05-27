@@ -85,17 +85,57 @@ export function PostSuggestions({ onSelect }: Props) {
   const [error, setError] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  function buildUrl(category: Category, q: string): string {
+    const tmdb = process.env.NEXT_PUBLIC_TMDB_API_KEY
+    const rawg = process.env.NEXT_PUBLIC_RAWG_API_KEY
+    if (category === 'movies') {
+      return q
+        ? `https://api.themoviedb.org/3/search/movie?api_key=${tmdb}&query=${encodeURIComponent(q)}`
+        : `https://api.themoviedb.org/3/trending/movie/day?api_key=${tmdb}`
+    }
+    if (category === 'music') {
+      return q
+        ? `https://api.deezer.com/search/track?q=${encodeURIComponent(q)}&limit=10`
+        : `https://api.deezer.com/chart/0/tracks?limit=10`
+    }
+    return q
+      ? `https://api.rawg.io/api/games?search=${encodeURIComponent(q)}&page_size=10&key=${rawg}`
+      : `https://api.rawg.io/api/games?ordering=-added&page_size=10&key=${rawg}`
+  }
+
+  function normalise(category: Category, data: Record<string, unknown>): AnyItem[] {
+    if (category === 'movies') {
+      return ((data.results as Record<string, unknown>[]) ?? []).slice(0, 10).map((m) => ({
+        id: String(m.id),
+        title: m.title as string,
+        year: m.release_date ? String(m.release_date).slice(0, 4) : '',
+        overview: m.overview as string,
+        posterUrl: m.poster_path ? `https://image.tmdb.org/t/p/w200${m.poster_path}` : null,
+      }))
+    }
+    if (category === 'music') {
+      return ((data.data as Record<string, unknown>[]) ?? []).map((t) => ({
+        id: String(t.id),
+        track: t.title as string,
+        artist: (t.artist as Record<string, string>).name,
+        imageUrl: (t.album as Record<string, string>).cover_medium ?? null,
+      }))
+    }
+    return ((data.results as Record<string, unknown>[]) ?? []).map((g) => ({
+      id: String(g.id),
+      name: g.name as string,
+      genres: ((g.genres as { name: string }[]) ?? []).map((x) => x.name).join(', '),
+      imageUrl: g.background_image as string | null,
+    }))
+  }
+
   function doFetch(category: Category, q: string) {
     setItems([])
     setError(null)
     setLoading(true)
-    const url = q ? `/api/suggestions/${category}?q=${encodeURIComponent(q)}` : `/api/suggestions/${category}`
-    fetch(url)
+    fetch(buildUrl(category, q))
       .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) setItems(data)
-        else setError(data.error ?? 'Failed to load')
-      })
+      .then((data) => setItems(normalise(category, data)))
       .catch(() => setError('Network error'))
       .finally(() => setLoading(false))
   }

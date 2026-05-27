@@ -105,12 +105,10 @@ build-client-web:
   variables:
     NEXT_PUBLIC_RELAY_URL: "https://murmur.bajzc.com"
     TMDB_API_KEY: "$TMDB_API_KEY"
-    LASTFM_API_KEY: "$LASTFM_API_KEY"
     RAWG_API_KEY: "$RAWG_API_KEY"
   before_script:
-    - test -n "$TMDB_API_KEY"    || (echo "ERROR: TMDB_API_KEY secret is not set" && exit 1)
-    - test -n "$LASTFM_API_KEY"  || (echo "ERROR: LASTFM_API_KEY secret is not set" && exit 1)
-    - test -n "$RAWG_API_KEY"    || (echo "ERROR: RAWG_API_KEY secret is not set" && exit 1)
+    - test -n "$TMDB_API_KEY"  || (echo "ERROR: TMDB_API_KEY secret is not set" && exit 1)
+    - test -n "$RAWG_API_KEY"  || (echo "ERROR: RAWG_API_KEY secret is not set" && exit 1)
   script:
     - cd client-web
     - npm ci

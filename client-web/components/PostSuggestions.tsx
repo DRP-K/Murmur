@@ -42,7 +42,7 @@ function buildTemplate(category: Category, item: AnyItem): string {
   }
   const g = item as GameItem
   const genrePart = g.genres ? ` (${g.genres})` : ''
-  return `Currently playing ${g.name}${genrePart} 🎮`
+  return `Recently playing ${g.name}${genrePart} 🎮`
 }
 
 function itemLabel(category: Category, item: AnyItem): string {

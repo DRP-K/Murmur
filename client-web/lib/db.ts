@@ -50,6 +50,9 @@ export interface StoredPost {
   expires_at: number | null
   is_own: boolean
   audienceTagIds?: string[]  // local-only; never transmitted to relay
+  category?: string | null
+  media_ref_name?: string | null
+  image_url?: string | null
 }
 
 export interface LocalTag {
@@ -117,6 +120,9 @@ class MurmurDatabase extends Dexie {
     this.version(6).stores({
       tags: 'id, name, createdAt',
       friendTags: '[friendId+tagId], friendId, tagId',
+    })
+    this.version(7).stores({
+      posts: 'id, timestamp, category',
     })
   }
 }

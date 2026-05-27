@@ -35,6 +35,9 @@ diesel::table! {
         content -> Text,
         timestamp -> BigInt,
         expires_at -> Nullable<BigInt>,
+        category -> Nullable<Text>,
+        media_ref_name -> Nullable<Text>,
+        image_url -> Nullable<Text>,
     }
 }
 

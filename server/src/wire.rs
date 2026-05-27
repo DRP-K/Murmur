@@ -49,6 +49,9 @@ pub enum ServerEnvelope {
         content: String,
         timestamp: i64,
         expires_at: Option<i64>,
+        category: Option<String>,
+        media_ref_name: Option<String>,
+        image_url: Option<String>,
     },
     #[serde(rename = "delivered_ack")]
     DeliveredAck { id: String },
@@ -75,6 +78,9 @@ impl From<Post> for ServerEnvelope {
             content: value.content,
             timestamp: value.timestamp,
             expires_at: value.expires_at,
+            category: value.category,
+            media_ref_name: value.media_ref_name,
+            image_url: value.image_url,
         }
     }
 }
@@ -91,6 +97,9 @@ pub struct CreatePostRequest {
     pub timestamp: i64,
     pub expires_at: Option<i64>,
     pub recipient_ids: Vec<String>,
+    pub category: Option<String>,
+    pub media_ref_name: Option<String>,
+    pub image_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

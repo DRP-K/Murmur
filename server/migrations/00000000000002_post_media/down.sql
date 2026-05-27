@@ -1,0 +1,3 @@
+-- SQLite does not support DROP COLUMN before version 3.35.
+-- To revert: recreate the posts table without the three columns
+-- and copy existing data across. Leaving empty for now.

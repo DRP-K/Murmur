@@ -79,7 +79,7 @@ function ChatListPage() {
       }
 
       if (env.msg_type === 'friend_added') {
-        processFriendAdded(
+        await processFriendAdded(
           env as ServerEnvelope & { type: 'message'; msg_type: 'friend_added' },
         ).catch(console.error)
         continue

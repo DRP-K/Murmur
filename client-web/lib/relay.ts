@@ -94,7 +94,9 @@ export async function getMessages(token: string): Promise<MessageListResponse> {
 }
 
 export async function ackMessage(token: string, messageId: string): Promise<void> {
-  await requireOk(await authedFetch(token, `/api/messages/${messageId}`, { method: 'DELETE' }))
+  await requireOk(
+    await authedFetch(token, `/api/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE' }),
+  )
 }
 
 export async function createPost(token: string, req: CreatePostRequest): Promise<void> {

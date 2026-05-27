@@ -104,8 +104,6 @@ build-client-web:
       - client-web/node_modules/
   variables:
     NEXT_PUBLIC_RELAY_URL: "https://murmur.bajzc.com"
-    NEXT_PUBLIC_TMDB_API_KEY: "$NEXT_PUBLIC_TMDB_API_KEY"
-    NEXT_PUBLIC_RAWG_API_KEY: "$NEXT_PUBLIC_RAWG_API_KEY"
   before_script:
     - test -n "$NEXT_PUBLIC_TMDB_API_KEY"
     - test -n "$NEXT_PUBLIC_RAWG_API_KEY"

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 use axum::Router;
-use axum::http::{HeaderValue, Method};
+use axum::http::Method;
 use axum::routing::{delete, get, post};
 use tokio::sync::mpsc;
 use tower_http::cors::{Any, CorsLayer};
@@ -10,6 +10,7 @@ use tracing::{debug, warn};
 
 use crate::api;
 use crate::db::{DbPool, establish_pool, run_migrations};
+use crate::seed;
 use crate::wire::ServerEnvelope;
 
 #[derive(Clone)]
@@ -35,6 +36,7 @@ impl AppState {
         {
             let mut conn = pool.get()?;
             run_migrations(&mut conn)?;
+            seed::seed_bots(&mut conn);
         }
         debug!("database pool initialized and migrations applied");
         Ok(Self::new(pool))

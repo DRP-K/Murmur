@@ -18,7 +18,7 @@ export async function processFriendAdded(
   console.log('[friend_sink] processFriendAdded: sender_id=', env.sender_id.slice(0, 8), 'payload_hex len=', env.payload_hex.length)
   const raw = decodePayload(env.payload_hex)
   console.log('[friend_sink] decoded payload:', raw)
-  let parsed: { user_id: string; pubkey_hex: string }
+  let parsed: { user_id: string; pubkey_hex: string; nickname?: string }
   try {
     parsed = JSON.parse(raw)
   } catch {
@@ -26,7 +26,7 @@ export async function processFriendAdded(
     return
   }
 
-  const { user_id: friendId, pubkey_hex: friendPubkey } = parsed
+  const { user_id: friendId, pubkey_hex: friendPubkey, nickname } = parsed
   console.log('[friend_sink] parsed friendId=', friendId.slice(0, 8), 'pubkey len=', friendPubkey.length)
   if (!friendId || !friendPubkey) return
 
@@ -48,7 +48,7 @@ export async function processFriendAdded(
     userId: friendId,
     pubkeyHex: friendPubkey,
     dhSharedHex: shared,
-    nickname: null,
+    nickname: nickname ?? null,
     blockedAt: null,
   })
   console.log('[friend_sink] friend stored in Dexie:', friendId.slice(0, 8))

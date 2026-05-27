@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::auth::{AuthError, validate_registration, verify_auth_request};
+use crate::seed;
 use crate::db::models::{NewPendingMessage, NewPost};
 use crate::db::repository;
 use crate::wire::{
@@ -94,6 +95,7 @@ pub async fn register(
     repository::register_user(&mut conn, &payload.user_id, &payload.pubkey_hex, now_ts())
         .map_err(db_error)?;
 
+    seed::seed_for_new_user(&mut conn, &payload.user_id);
     info!(user_id = %payload.user_id, "user registered");
     Ok(StatusCode::CREATED)
 }

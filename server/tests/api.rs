@@ -301,7 +301,14 @@ async fn post_fanout_and_friend_add() {
         .expect("body")
         .to_bytes();
     let pulled: Value = serde_json::from_slice(&body).expect("messages response should parse");
-    assert_eq!(pulled["messages"][0]["msg_type"], "friend_added");
+    assert!(
+        pulled["messages"]
+            .as_array()
+            .expect("messages array")
+            .iter()
+            .any(|m| m["msg_type"] == "friend_added"),
+        "expected a friend_added message in the queue"
+    );
 }
 
 #[tokio::test]
@@ -339,15 +346,21 @@ async fn websocket_live_message_and_sender_ack() {
         .expect("message request should send");
     assert_eq!(response.status(), StatusCode::ACCEPTED);
 
-    let bob_msg = timeout(Duration::from_secs(2), bob_ws.next())
-        .await
-        .expect("bob should receive websocket message")
-        .expect("bob stream should be open")
-        .expect("bob message should be ok");
-    let Message::Text(text) = bob_msg else {
-        panic!("expected text message");
+    // Drain messages until we reach live1 — seed welcome messages may arrive first.
+    let envelope = loop {
+        let bob_msg = timeout(Duration::from_secs(2), bob_ws.next())
+            .await
+            .expect("bob should receive websocket message")
+            .expect("bob stream should be open")
+            .expect("bob message should be ok");
+        let Message::Text(text) = bob_msg else {
+            panic!("expected text message");
+        };
+        let env: ServerEnvelope = serde_json::from_str(&text).expect("message should parse");
+        if matches!(&env, ServerEnvelope::Message { id, .. } if id == "live1") {
+            break env;
+        }
     };
-    let envelope: ServerEnvelope = serde_json::from_str(&text).expect("message should parse");
     assert_eq!(
         envelope,
         ServerEnvelope::Message {
@@ -360,17 +373,23 @@ async fn websocket_live_message_and_sender_ack() {
         }
     );
 
-    let ack = timeout(Duration::from_secs(2), alice_ws.next())
-        .await
-        .expect("alice should receive ack")
-        .expect("alice stream should be open")
-        .expect("alice message should be ok");
-    let Message::Text(text) = ack else {
-        panic!("expected text ack");
+    // Drain until we reach the DeliveredAck — seed messages for Alice may arrive first.
+    let ack_envelope = loop {
+        let ack = timeout(Duration::from_secs(2), alice_ws.next())
+            .await
+            .expect("alice should receive ack")
+            .expect("alice stream should be open")
+            .expect("alice message should be ok");
+        let Message::Text(text) = ack else {
+            panic!("expected text ack");
+        };
+        let env: ServerEnvelope = serde_json::from_str(&text).expect("ack should parse");
+        if matches!(&env, ServerEnvelope::DeliveredAck { id } if id == "live1") {
+            break env;
+        }
     };
-    let envelope: ServerEnvelope = serde_json::from_str(&text).expect("ack should parse");
     assert_eq!(
-        envelope,
+        ack_envelope,
         ServerEnvelope::DeliveredAck {
             id: "live1".to_string()
         }
@@ -529,9 +548,12 @@ async fn add_and_list_friends() {
         .to_bytes();
     let list: FriendListResponse =
         serde_json::from_slice(&body).expect("friend list response should parse");
-    assert_eq!(list.friends.len(), 1);
-    assert_eq!(list.friends[0].user_id, bob.user_id);
-    assert_eq!(list.friends[0].pubkey_hex, bob.pubkey_hex);
+    let bob_entry = list
+        .friends
+        .iter()
+        .find(|f| f.user_id == bob.user_id)
+        .expect("bob should be in alice's friend list");
+    assert_eq!(bob_entry.pubkey_hex, bob.pubkey_hex);
 
     // Unauthenticated request.
     let unauth = request(app, "GET", "/api/friends", None, json!({})).await;
@@ -583,4 +605,82 @@ async fn websocket_initial_drain_sends_pending_messages() {
 
     bob_ws.close(None).await.expect("bob close should send");
     handle.abort();
+}
+
+#[tokio::test]
+async fn new_user_gets_seeded_friends_posts_and_welcome_messages() {
+    let app = app();
+    let alice = test_user(20);
+
+    register_user(app.clone(), &alice).await;
+    let alice_token = auth_user(app.clone(), &alice).await;
+
+    // Should have bot friends straight after registration.
+    let list_resp =
+        request(app.clone(), "GET", "/api/friends", Some(&alice_token), json!({})).await;
+    assert_eq!(list_resp.status(), StatusCode::OK);
+    let body = list_resp.into_body().collect().await.expect("body").to_bytes();
+    let list: FriendListResponse =
+        serde_json::from_slice(&body).expect("friend list should parse");
+    assert!(
+        list.friends.len() >= 3,
+        "at least 3 bot friends expected, got {}",
+        list.friends.len()
+    );
+
+    // Should have seed posts waiting in the feed.
+    let posts_resp =
+        request(app.clone(), "GET", "/api/posts", Some(&alice_token), json!({})).await;
+    assert_eq!(posts_resp.status(), StatusCode::OK);
+    let body = posts_resp.into_body().collect().await.expect("body").to_bytes();
+    let posts: Value = serde_json::from_slice(&body).expect("posts response should parse");
+    assert!(
+        posts["posts"].as_array().expect("posts array").len() >= 3,
+        "at least one post per bot expected"
+    );
+
+    // Should have one friend_added + one dm welcome per bot.
+    let msg_resp =
+        request(app.clone(), "GET", "/api/messages", Some(&alice_token), json!({})).await;
+    assert_eq!(msg_resp.status(), StatusCode::OK);
+    let body = msg_resp.into_body().collect().await.expect("body").to_bytes();
+    let msgs: Value = serde_json::from_slice(&body).expect("messages response should parse");
+    let messages = msgs["messages"].as_array().expect("messages array");
+    assert_eq!(
+        messages.iter().filter(|m| m["msg_type"] == "friend_added").count(),
+        3,
+        "one friend_added per bot"
+    );
+    assert_eq!(
+        messages.iter().filter(|m| m["msg_type"] == "dm").count(),
+        3,
+        "one dm welcome per bot"
+    );
+}
+
+#[tokio::test]
+async fn re_registration_does_not_duplicate_seed_data() {
+    let app = app();
+    let alice = test_user(21);
+
+    register_user(app.clone(), &alice).await;
+    // Second registration is a no-op for the user row, seed must not run again.
+    register_user(app.clone(), &alice).await;
+    let alice_token = auth_user(app.clone(), &alice).await;
+
+    let msg_resp =
+        request(app.clone(), "GET", "/api/messages", Some(&alice_token), json!({})).await;
+    let body = msg_resp.into_body().collect().await.expect("body").to_bytes();
+    let msgs: Value = serde_json::from_slice(&body).expect("messages response should parse");
+    let messages = msgs["messages"].as_array().expect("messages array");
+    assert_eq!(
+        messages.iter().filter(|m| m["msg_type"] == "friend_added").count(),
+        3,
+        "exactly 3 friend_added messages — no duplicates on re-registration"
+    );
+    assert_eq!(
+        messages.iter().filter(|m| m["msg_type"] == "dm").count(),
+        3,
+        "exactly 3 dm welcome messages — no duplicates on re-registration"
+    );
 }

@@ -95,8 +95,8 @@ export function PostSuggestions({ onSelect }: Props) {
     }
     if (category === 'music') {
       return q
-        ? `https://api.deezer.com/search/track?q=${encodeURIComponent(q)}&limit=10`
-        : `https://api.deezer.com/chart/0/tracks?limit=10`
+        ? `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&entity=song&limit=10`
+        : `https://itunes.apple.com/us/rss/topsongs/limit=10/json`
     }
     return q
       ? `https://api.rawg.io/api/games?search=${encodeURIComponent(q)}&page_size=10&key=${rawg}`
@@ -114,12 +114,27 @@ export function PostSuggestions({ onSelect }: Props) {
       }))
     }
     if (category === 'music') {
-      return ((data.data as Record<string, unknown>[]) ?? []).map((t) => ({
-        id: String(t.id),
-        track: t.title as string,
-        artist: (t.artist as Record<string, string>).name,
-        imageUrl: (t.album as Record<string, string>).cover_medium ?? null,
-      }))
+      // search endpoint returns { results: [] }, chart RSS returns { feed: { entry: [] } }
+      const tracks: Record<string, unknown>[] =
+        (data.results as Record<string, unknown>[]) ??
+        ((data.feed as Record<string, unknown>)?.entry as Record<string, unknown>[]) ??
+        []
+      return tracks.map((t, i) => {
+        const isChart = !data.results
+        if (isChart) {
+          const name = (t['im:name'] as Record<string, string>)?.label ?? ''
+          const artist = (t['im:artist'] as Record<string, string>)?.label ?? ''
+          const images = t['im:image'] as Record<string, string>[] | undefined
+          const img = images?.[images.length - 1]?.label ?? null
+          return { id: String(i), track: name, artist, imageUrl: img }
+        }
+        return {
+          id: String(t.trackId),
+          track: t.trackName as string,
+          artist: t.artistName as string,
+          imageUrl: t.artworkUrl100 as string ?? null,
+        }
+      })
     }
     return ((data.results as Record<string, unknown>[]) ?? []).map((g) => ({
       id: String(g.id),

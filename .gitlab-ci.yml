@@ -107,8 +107,8 @@ build-client-web:
     TMDB_API_KEY: "$TMDB_API_KEY"
     RAWG_API_KEY: "$RAWG_API_KEY"
   before_script:
-    - test -n "$TMDB_API_KEY"  || { echo "ERROR: TMDB_API_KEY secret is not set"; exit 1; }
-    - test -n "$RAWG_API_KEY"  || { echo "ERROR: RAWG_API_KEY secret is not set"; exit 1; }
+    - test -n "$TMDB_API_KEY"
+    - test -n "$RAWG_API_KEY"
   script:
     - cd client-web
     - npm ci

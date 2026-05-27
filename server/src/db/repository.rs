@@ -361,6 +361,9 @@ mod tests {
             content: "hello",
             timestamp: 1000,
             expires_at: None,
+            category: None,
+            image_url: None,
+            media_ref_name: None,
         };
 
         let inserted_deliveries = create_post_with_deliveries(&mut conn, &post, &["u2", "u3"])
@@ -390,6 +393,9 @@ mod tests {
             content: "fresh",
             timestamp: 1000,
             expires_at: Some(2_000),
+            category: None,
+            image_url: None,
+            media_ref_name: None,
         };
         let expired = NewPost {
             id: "expired",
@@ -397,6 +403,9 @@ mod tests {
             content: "expired",
             timestamp: 999,
             expires_at: Some(1_000),
+            category: None,
+            image_url: None,
+            media_ref_name: None,
         };
 
         create_post_with_deliveries(&mut conn, &fresh, &["u2"]).expect("fresh fan-out should work");

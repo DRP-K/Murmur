@@ -5,7 +5,7 @@ export async function GET(request: Request) {
   const q = new URL(request.url).searchParams.get('q')?.trim()
   const url = q
     ? `https://api.rawg.io/api/games?search=${encodeURIComponent(q)}&page_size=10&key=${key}`
-    : `https://api.rawg.io/api/games?ordering=-rating&page_size=10&key=${key}`
+    : `https://api.rawg.io/api/games?ordering=-added&page_size=10&key=${key}`
 
   const res = await fetch(url, { next: { revalidate: q ? 0 : 3600 } })
   if (!res.ok) return Response.json({ error: 'upstream error' }, { status: 502 })

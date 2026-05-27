@@ -35,8 +35,9 @@ export function PostCard({ post, liked, resonated, onToggleLike, onToggleResonat
             alt=""
             aria-hidden
             className="absolute inset-0 h-full w-full object-cover"
+            style={{ filter: 'blur(3px)', transform: 'scale(1.03)' }}
           />
-          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm dark:bg-zinc-900/85" />
+          <div className="absolute inset-0 bg-white/80 dark:bg-zinc-900/85" />
         </>
       )}
 

@@ -222,6 +222,9 @@ pub async fn post_post(
         content: &payload.content,
         timestamp: payload.timestamp,
         expires_at: payload.expires_at,
+        category: payload.category.as_deref(),
+        media_ref_name: payload.media_ref_name.as_deref(),
+        image_url: payload.image_url.as_deref(),
     };
     let recipient_refs: Vec<&str> = payload.recipient_ids.iter().map(String::as_str).collect();
 
@@ -237,6 +240,9 @@ pub async fn post_post(
         content: payload.content,
         timestamp: payload.timestamp,
         expires_at: payload.expires_at,
+        category: payload.category,
+        media_ref_name: payload.media_ref_name,
+        image_url: payload.image_url,
     };
 
     for recipient_id in payload.recipient_ids {

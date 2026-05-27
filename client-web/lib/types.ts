@@ -19,6 +19,9 @@ export type ServerEnvelope =
       content: string
       timestamp: number
       expires_at: number | null
+      category?: string | null
+      media_ref_name?: string | null
+      image_url?: string | null
     }
   | { type: 'delivered_ack'; id: string }
 
@@ -56,6 +59,9 @@ export interface CreatePostRequest {
   timestamp: number
   expires_at: number | null
   recipient_ids: string[]
+  category?: string | null
+  media_ref_name?: string | null
+  image_url?: string | null
 }
 
 export interface PostListResponse {
@@ -79,6 +85,9 @@ export interface Post {
   timestamp: number
   expires_at: number | null
   is_own: boolean
+  category?: string | null
+  media_ref_name?: string | null
+  image_url?: string | null
 }
 
 export interface Message {

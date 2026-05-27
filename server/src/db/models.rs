@@ -51,6 +51,9 @@ pub struct Post {
     pub content: String,
     pub timestamp: i64,
     pub expires_at: Option<i64>,
+    pub category: Option<String>,
+    pub media_ref_name: Option<String>,
+    pub image_url: Option<String>,
 }
 
 #[derive(Debug, Insertable)]
@@ -61,6 +64,9 @@ pub struct NewPost<'a> {
     pub content: &'a str,
     pub timestamp: i64,
     pub expires_at: Option<i64>,
+    pub category: Option<&'a str>,
+    pub media_ref_name: Option<&'a str>,
+    pub image_url: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Queryable, Selectable, Identifiable, PartialEq, Eq)]

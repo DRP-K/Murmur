@@ -31,6 +31,9 @@ function toPost(env: ServerEnvelope & { type: 'post' }, isOwn = false): Post {
     timestamp: env.timestamp,
     expires_at: env.expires_at,
     is_own: isOwn,
+    category: env.category,
+    media_ref_name: env.media_ref_name,
+    image_url: env.image_url,
   }
 }
 
@@ -49,6 +52,7 @@ export default function FeedPage() {
   )
   const [composeOpen, setComposeOpen] = useState(false)
   const [reachPost, setReachPost] = useState<Post | null>(null)
+  const [activeFilter, setActiveFilter] = useState<string>('all')
 
   // Fetch pending posts on mount and add to global store.
   useEffect(() => {
@@ -85,7 +89,14 @@ export default function FeedPage() {
     })
   }, [])
 
-  async function handlePost(content: string, expiresAt: number | null, audienceTagIds: string[] | null) {
+  async function handlePost(
+    content: string,
+    expiresAt: number | null,
+    audienceTagIds: string[] | null,
+    category?: string | null,
+    mediaRefName?: string | null,
+    imageUrl?: string | null,
+  ) {
     const t = useAppStore.getState().token
     if (!t) throw new Error('not authenticated')
 
@@ -101,10 +112,9 @@ export default function FeedPage() {
     const id = crypto.randomUUID()
     const timestamp = Math.floor(Date.now() / 1000)
 
-    // Optimistic insert into global store.
-    addPost({ id, author_id: '', content, timestamp, expires_at: expiresAt, is_own: true })
+    addPost({ id, author_id: '', content, timestamp, expires_at: expiresAt, is_own: true, category, media_ref_name: mediaRefName, image_url: imageUrl })
 
-    await createPost(t, { id, content, timestamp, expires_at: expiresAt, recipient_ids: recipientIds })
+    await createPost(t, { id, content, timestamp, expires_at: expiresAt, recipient_ids: recipientIds, category, media_ref_name: mediaRefName, image_url: imageUrl })
   }
 
   if (!bootstrapped) {
@@ -120,20 +130,42 @@ export default function FeedPage() {
   }
 
   const now = Math.floor(Date.now() / 1000)
-  const visiblePosts = posts.filter(
-    (p) => p.expires_at === null || p.expires_at > now,
-  )
+  const visiblePosts = posts
+    .filter((p) => p.expires_at === null || p.expires_at > now)
+    .filter((p) => activeFilter === 'all' || p.category === activeFilter)
 
   return (
     <>
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
-        <h1 className="text-base font-semibold text-zinc-800 dark:text-zinc-100">Feed</h1>
-        <button
-          onClick={() => setComposeOpen(true)}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-        >
-          <Plus size={16} />
-        </button>
+      <header className="sticky top-0 z-10 border-b border-zinc-200 bg-white/90 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
+        <div className="flex items-center justify-between px-4 py-3">
+          <h1 className="text-base font-semibold text-zinc-800 dark:text-zinc-100">Feed</h1>
+          <button
+            onClick={() => setComposeOpen(true)}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
+          >
+            <Plus size={16} />
+          </button>
+        </div>
+        <div className="flex gap-1.5 overflow-x-auto px-4 pb-2.5">
+          {[
+            { key: 'all', label: 'All' },
+            { key: 'movies', label: '🎬 Movie' },
+            { key: 'music', label: '🎵 Music' },
+            { key: 'games', label: '🎮 Game' },
+          ].map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setActiveFilter(f.key)}
+              className={`flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                activeFilter === f.key
+                  ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
+                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </header>
 
       <main className="flex flex-1 flex-col gap-3 p-4">

@@ -1,14 +1,24 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { X, Send, ChevronDown, ChevronUp } from 'lucide-react'
+import { X, Send, ChevronDown, ChevronUp, Sparkles } from 'lucide-react'
 import { db, type LocalTag } from '@/lib/db'
+import { PostSuggestions, type SelectedSuggestion } from './PostSuggestions'
 
 interface Props {
   open: boolean
   onClose: () => void
-  onSubmit: (content: string, expiresAt: number | null, audienceTagIds: string[] | null) => Promise<void>
+  onSubmit: (
+    content: string,
+    expiresAt: number | null,
+    audienceTagIds: string[] | null,
+    category?: string | null,
+    mediaRefName?: string | null,
+    imageUrl?: string | null,
+  ) => Promise<void>
 }
+
+const CATEGORY_EMOJI: Record<string, string> = { movies: '🎬', music: '🎵', games: '🎮' }
 
 const EXPIRY_OPTIONS = [
   { label: 'Never', value: null },
@@ -24,6 +34,10 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
   const [allTags, setAllTags] = useState<LocalTag[]>([])
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set())
   const [audienceOpen, setAudienceOpen] = useState(false)
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [mediaCategory, setMediaCategory] = useState<string | null>(null)
+  const [mediaRefName, setMediaRefName] = useState<string | null>(null)
+  const [mediaImageUrl, setMediaImageUrl] = useState<string | null>(null)
 
   useEffect(() => {
     if (open) db.tags.orderBy('name').toArray().then(setAllTags)
@@ -53,11 +67,14 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
     try {
       const expiresAt = expirySeconds ? Math.floor(Date.now() / 1000) + expirySeconds : null
       const tagIds = selectedTagIds.size > 0 ? [...selectedTagIds] : null
-      await onSubmit(content.trim(), expiresAt, tagIds)
+      await onSubmit(content.trim(), expiresAt, tagIds, mediaCategory, mediaRefName, mediaImageUrl)
       setContent('')
       setExpirySeconds(null)
       setSelectedTagIds(new Set())
       setAudienceOpen(false)
+      setMediaCategory(null)
+      setMediaRefName(null)
+      setMediaImageUrl(null)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to post')
@@ -77,15 +94,54 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <textarea
-            autoFocus
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="What's on your mind?"
-            rows={4}
-            maxLength={500}
-            className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
-          />
+          <div className="relative">
+            <textarea
+              autoFocus
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="What's on your mind?"
+              rows={4}
+              maxLength={500}
+              className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 pr-10 text-sm text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+            />
+            <button
+              type="button"
+              onClick={() => setShowSuggestions((v) => !v)}
+              title="Get inspired"
+              className={`absolute right-2 top-2 rounded-lg p-1.5 transition-colors ${
+                showSuggestions
+                  ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
+                  : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'
+              }`}
+            >
+              <Sparkles size={15} />
+            </button>
+          </div>
+
+          {mediaRefName && (
+            <div className="flex items-center gap-2 rounded-lg bg-zinc-100 px-3 py-1.5 text-xs dark:bg-zinc-800">
+              <span>{CATEGORY_EMOJI[mediaCategory ?? ''] ?? ''} {mediaRefName}</span>
+              <button
+                type="button"
+                onClick={() => { setMediaCategory(null); setMediaRefName(null); setMediaImageUrl(null) }}
+                className="ml-auto text-zinc-400 hover:text-zinc-600"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
+
+          {showSuggestions && (
+            <PostSuggestions
+              onSelect={(s: SelectedSuggestion) => {
+                setContent(s.text)
+                setMediaCategory(s.category)
+                setMediaRefName(s.mediaRefName)
+                setMediaImageUrl(s.imageUrl)
+                setShowSuggestions(false)
+              }}
+            />
+          )}
 
           {/* Audience picker */}
           <div className="rounded-xl border border-zinc-200 dark:border-zinc-700">
@@ -133,17 +189,20 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
           </div>
 
           <div className="flex items-center justify-between">
-            <select
-              value={expirySeconds ?? ''}
-              onChange={(e) => setExpirySeconds(e.target.value ? Number(e.target.value) : null)}
-              className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-600 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
-            >
-              {EXPIRY_OPTIONS.map((o) => (
-                <option key={String(o.value)} value={o.value ?? ''}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-zinc-400 dark:text-zinc-500">Expires:</span>
+              <select
+                value={expirySeconds ?? ''}
+                onChange={(e) => setExpirySeconds(e.target.value ? Number(e.target.value) : null)}
+                className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-600 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+              >
+                {EXPIRY_OPTIONS.map((o) => (
+                  <option key={String(o.value)} value={o.value ?? ''}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <span className="text-xs text-zinc-400">{content.length}/500</span>
           </div>

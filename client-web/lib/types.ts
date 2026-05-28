@@ -53,6 +53,10 @@ export interface MessageListResponse {
   messages: ServerEnvelope[]
 }
 
+export interface AckMessageRequest {
+  message_id: string
+}
+
 export interface CreatePostRequest {
   id: string
   content: string

@@ -101,6 +101,7 @@ pub fn router(state: AppState) -> Router {
             "/api/messages",
             post(api::post_message).get(api::get_messages),
         )
+        .route("/api/messages/ack", post(api::ack_message))
         .route("/api/messages/{id}", delete(api::delete_message))
         .route("/api/posts", post(api::post_post).get(api::get_posts))
         .route("/api/posts/ack", post(api::ack_post))

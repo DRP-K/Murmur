@@ -13,6 +13,9 @@ function toPost(env: ServerEnvelope & { type: 'post' }) {
     timestamp: env.timestamp,
     expires_at: env.expires_at,
     is_own: false,
+    category: env.category,
+    media_ref_name: env.media_ref_name,
+    image_url: env.image_url,
   }
 }
 

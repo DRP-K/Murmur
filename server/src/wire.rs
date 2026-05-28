@@ -91,6 +91,11 @@ pub struct MessageListResponse {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct AckMessageRequest {
+    pub message_id: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct CreatePostRequest {
     pub id: String,
     pub content: String,

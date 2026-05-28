@@ -404,7 +404,10 @@ mod tests {
             let met_at_event = payload["met_at_event"]
                 .as_str()
                 .expect("met_at_event missing");
-            assert_eq!(met_at_event, BOTS[i].met_at_event, "unexpected met_at_event");
+            assert_eq!(
+                met_at_event, BOTS[i].met_at_event,
+                "unexpected met_at_event"
+            );
         }
     }
 

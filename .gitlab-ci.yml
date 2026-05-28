@@ -72,7 +72,7 @@ deploy-staged:
   environment:
     name: staged
   script:
-    - docker compose -f compose.staged.yml down
+    - docker compose -p murmur-staged -f compose.staged.yml down -v
     - docker compose -p murmur-staged -f compose.staged.yml up -d --build --remove-orphans
     - docker compose -p murmur-staged -f compose.staged.yml ps
 

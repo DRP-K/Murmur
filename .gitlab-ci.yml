@@ -72,7 +72,7 @@ deploy-staged:
   environment:
     name: staged
   script:
-    - docker compose -f compose.staged.yml up -d --build --remove-orphans
+    - docker compose -p murmur-staged -f compose.staged.yml up -d --build --remove-orphans
     - docker compose -f compose.staged.yml ps
 
 deploy-production:
@@ -86,7 +86,7 @@ deploy-production:
   environment:
     name: production
   script:
-    - docker compose -f compose.production.yml up -d --build --remove-orphans
+    - docker compose -p murmur-production -f compose.production.yml up -d --build --remove-orphans
     - docker compose -f compose.production.yml ps
 
 build-client-web:
@@ -112,6 +112,30 @@ build-client-web:
       - client-web/dist/
     expire_in: 1 hour
 
+build-client-web-staged:
+  stage: build
+  image: node:22-alpine
+  cache:
+    key:
+      files:
+        - client-web/package-lock.json
+    paths:
+      - client-web/node_modules/
+  variables:
+    NEXT_DIST_DIR: "dist-staged"
+    NEXT_PUBLIC_RELAY_URL: "https://murmur-dev-server.bajzc.com"
+  before_script:
+    - test -n "$NEXT_PUBLIC_TMDB_API_KEY"
+    - test -n "$NEXT_PUBLIC_RAWG_API_KEY"
+  script:
+    - cd client-web
+    - npm ci
+    - npm run build
+  artifacts:
+    paths:
+      - client-web/dist-staged/
+    expire_in: 1 hour
+
 deploy-pages:
   stage: deploy
   image: node:22-alpine
@@ -129,7 +153,41 @@ deploy-pages:
     - test -n "$CLOUDFLARE_ACCOUNT_ID"
   script:
     - npx wrangler pages deploy client-web/dist --project-name murmur
+deploy-pages-preview:
+  stage: deploy
+  image: node:22-alpine
+  needs:
+    - build-client-web-staged
+  rules:
+    - if: '$CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+      when: manual
+    - when: never
+  environment:
+    name: cloudflare-pages-preview/$CI_COMMIT_REF_SLUG
+    url: https://murmur-dev-server.pages.dev
+    on_stop: stop-pages-preview
+  before_script:
+    - test -n "$CLOUDFLARE_API_TOKEN"
+    - test -n "$CLOUDFLARE_ACCOUNT_ID"
+  script:
+    - npx wrangler pages deploy client-web/dist-staged --project-name murmur --branch "$CI_COMMIT_REF_SLUG"
 
+stop-pages-preview:
+  stage: deploy
+  image: node:22-alpine
+  needs: []
+  rules:
+    - if: '$CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+      when: manual
+    - when: never
+  environment:
+    name: cloudflare-pages-preview/$CI_COMMIT_REF_SLUG
+    action: stop
+  before_script:
+    - test -n "$CLOUDFLARE_API_TOKEN"
+    - test -n "$CLOUDFLARE_ACCOUNT_ID"
+  script:
+    - npx wrangler pages deployment delete --project-name murmur --branch "$CI_COMMIT_REF_SLUG" || true
 sast:
   stage: test
 

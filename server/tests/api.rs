@@ -616,12 +616,22 @@ async fn new_user_gets_seeded_friends_posts_and_welcome_messages() {
     let alice_token = auth_user(app.clone(), &alice).await;
 
     // Should have bot friends straight after registration.
-    let list_resp =
-        request(app.clone(), "GET", "/api/friends", Some(&alice_token), json!({})).await;
+    let list_resp = request(
+        app.clone(),
+        "GET",
+        "/api/friends",
+        Some(&alice_token),
+        json!({}),
+    )
+    .await;
     assert_eq!(list_resp.status(), StatusCode::OK);
-    let body = list_resp.into_body().collect().await.expect("body").to_bytes();
-    let list: FriendListResponse =
-        serde_json::from_slice(&body).expect("friend list should parse");
+    let body = list_resp
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let list: FriendListResponse = serde_json::from_slice(&body).expect("friend list should parse");
     assert!(
         list.friends.len() >= 3,
         "at least 3 bot friends expected, got {}",
@@ -629,10 +639,21 @@ async fn new_user_gets_seeded_friends_posts_and_welcome_messages() {
     );
 
     // Should have seed posts waiting in the feed.
-    let posts_resp =
-        request(app.clone(), "GET", "/api/posts", Some(&alice_token), json!({})).await;
+    let posts_resp = request(
+        app.clone(),
+        "GET",
+        "/api/posts",
+        Some(&alice_token),
+        json!({}),
+    )
+    .await;
     assert_eq!(posts_resp.status(), StatusCode::OK);
-    let body = posts_resp.into_body().collect().await.expect("body").to_bytes();
+    let body = posts_resp
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
     let posts: Value = serde_json::from_slice(&body).expect("posts response should parse");
     assert!(
         posts["posts"].as_array().expect("posts array").len() >= 3,
@@ -659,14 +680,28 @@ async fn new_user_gets_seeded_friends_posts_and_welcome_messages() {
     }
 
     // Should have one friend_added + one dm welcome per bot.
-    let msg_resp =
-        request(app.clone(), "GET", "/api/messages", Some(&alice_token), json!({})).await;
+    let msg_resp = request(
+        app.clone(),
+        "GET",
+        "/api/messages",
+        Some(&alice_token),
+        json!({}),
+    )
+    .await;
     assert_eq!(msg_resp.status(), StatusCode::OK);
-    let body = msg_resp.into_body().collect().await.expect("body").to_bytes();
+    let body = msg_resp
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
     let msgs: Value = serde_json::from_slice(&body).expect("messages response should parse");
     let messages = msgs["messages"].as_array().expect("messages array");
     assert_eq!(
-        messages.iter().filter(|m| m["msg_type"] == "friend_added").count(),
+        messages
+            .iter()
+            .filter(|m| m["msg_type"] == "friend_added")
+            .count(),
         3,
         "one friend_added per bot"
     );
@@ -687,13 +722,27 @@ async fn re_registration_does_not_duplicate_seed_data() {
     register_user(app.clone(), &alice).await;
     let alice_token = auth_user(app.clone(), &alice).await;
 
-    let msg_resp =
-        request(app.clone(), "GET", "/api/messages", Some(&alice_token), json!({})).await;
-    let body = msg_resp.into_body().collect().await.expect("body").to_bytes();
+    let msg_resp = request(
+        app.clone(),
+        "GET",
+        "/api/messages",
+        Some(&alice_token),
+        json!({}),
+    )
+    .await;
+    let body = msg_resp
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
     let msgs: Value = serde_json::from_slice(&body).expect("messages response should parse");
     let messages = msgs["messages"].as_array().expect("messages array");
     assert_eq!(
-        messages.iter().filter(|m| m["msg_type"] == "friend_added").count(),
+        messages
+            .iter()
+            .filter(|m| m["msg_type"] == "friend_added")
+            .count(),
         3,
         "exactly 3 friend_added messages — no duplicates on re-registration"
     );

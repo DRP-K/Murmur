@@ -3,7 +3,7 @@ networks:
     external: true
 
 services:
-  murmur-server:
+  murmur-server-staged:
     build:
       context: .
       dockerfile: Dockerfile.staged

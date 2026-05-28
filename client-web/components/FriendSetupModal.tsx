@@ -68,7 +68,7 @@ export function FriendSetupModal({ friendId, initialNickname, initialMetAtEvent,
 
           <div>
             <p className="mb-2 text-xs font-medium text-zinc-500">
-              Tags <span className="font-normal text-zinc-400">(optional)</span>
+              Common Experience Tags <span className="font-normal text-zinc-400">(optional)</span>
             </p>
             <TagSelector friendId={friendId} />
           </div>

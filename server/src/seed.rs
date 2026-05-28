@@ -14,6 +14,14 @@ struct BotDef {
     welcomes: &'static [&'static str],
 }
 
+struct ExtraPostDef {
+    bot_index: usize,
+    content: &'static str,
+    category: &'static str,
+    media_ref_name: &'static str,
+    image_url: &'static str,
+}
+
 const BOTS: &[BotDef] = &[
     BotDef {
         seed: 1,
@@ -53,6 +61,30 @@ const BOTS: &[BotDef] = &[
             "Hey there! Always excited to see new faces here 🌟",
             "Welcome to the app! Hope you find something you love here 🎶",
         ],
+    },
+];
+
+const EXTRA_BOT_POSTS: &[ExtraPostDef] = &[
+    ExtraPostDef {
+        bot_index: 0, // BOT_1
+        content: "Can't stop listening to \"Boston\" by STELLA LEFTY 🎵",
+        category: "music",
+        media_ref_name: "Boston",
+        image_url: "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/7c/de/5e/7cde5e7a-612d-9714-d34c-1eb234c85ebb/810129961546.jpg/170x170bb.png",
+    },
+    ExtraPostDef {
+        bot_index: 0, // BOT_1
+        content: "Recently playing Portal 2 (Shooter, Puzzle) 🎮\nasdfiuhwe",
+        category: "games",
+        media_ref_name: "Portal 2",
+        image_url: "https://media.rawg.io/media/games/2ba/2bac0e87cf45e5b508f227d281c9252a.jpg",
+    },
+    ExtraPostDef {
+        bot_index: 1, // BOT_2
+        content: "WALLAHI",
+        category: "movies",
+        media_ref_name: "Fuze",
+        image_url: "https://image.tmdb.org/t/p/w200/huKckuD90OblEHH8MYfekHvCPfp.jpg",
     },
 ];
 
@@ -162,6 +194,25 @@ pub fn seed_for_new_user(conn: &mut SqliteConnection, new_user_id: &str) {
         }
     }
 
+    // Add extra rich-media onboarding posts.
+    for (i, extra) in EXTRA_BOT_POSTS.iter().enumerate() {
+        let (extra_bot_id, _) = &bot_ids[extra.bot_index];
+        let post_id = format!("seed:{extra_bot_id}:{new_user_id}:extra:{i}");
+        let post = NewPost {
+            id: &post_id,
+            author_id: extra_bot_id,
+            content: extra.content,
+            timestamp: now - (120 - (i as i64 * 60)),
+            expires_at: None,
+            category: Some(extra.category),
+            media_ref_name: Some(extra.media_ref_name),
+            image_url: Some(extra.image_url),
+        };
+        if let Err(e) = repository::create_post_with_deliveries(conn, &post, &[new_user_id]) {
+            warn!(post_id = %post_id, error = %e, "seed extra post failed");
+        }
+    }
+
     info!(user_id = %new_user_id, bots = BOTS.len(), "user seeded");
 }
 
@@ -232,7 +283,46 @@ mod tests {
         let posts =
             repository::list_pending_posts(&mut conn, &user_id, chrono::Utc::now().timestamp())
                 .expect("posts should list");
-        assert_eq!(posts.len(), total_seed_posts, "all seed posts delivered");
+        assert_eq!(
+            posts.len(),
+            total_seed_posts + EXTRA_BOT_POSTS.len(),
+            "all seed posts delivered including extra posts"
+        );
+
+        let bot_ids_by_index: Vec<String> = BOTS
+            .iter()
+            .map(|bot| bot_credentials(bot.seed).0)
+            .collect();
+        let extra_posts: Vec<_> = posts
+            .iter()
+            .filter(|p| p.category.is_some() && p.media_ref_name.is_some() && p.image_url.is_some())
+            .collect();
+        assert_eq!(
+            extra_posts.len(),
+            EXTRA_BOT_POSTS.len(),
+            "expected rich extra posts to be present"
+        );
+        for (idx, expected) in EXTRA_BOT_POSTS.iter().enumerate() {
+            let actual = extra_posts
+                .iter()
+                .find(|p| p.media_ref_name.as_deref() == Some(expected.media_ref_name))
+                .expect("expected extra post should be present");
+            assert_eq!(
+                actual.author_id,
+                bot_ids_by_index[expected.bot_index],
+                "extra post author should match configured bot"
+            );
+            assert_eq!(actual.content, expected.content);
+            assert_eq!(actual.category.as_deref(), Some(expected.category));
+            assert_eq!(actual.media_ref_name.as_deref(), Some(expected.media_ref_name));
+            assert_eq!(actual.image_url.as_deref(), Some(expected.image_url));
+            if idx == 1 {
+                assert!(
+                    actual.content.contains('\n'),
+                    "second extra post should preserve multiline content"
+                );
+            }
+        }
 
         // Each bot sends 2 messages: friend_added + dm welcome.
         let messages = repository::list_pending_messages(&mut conn, &user_id)
@@ -303,6 +393,16 @@ mod tests {
         let messages = repository::list_pending_messages(&mut conn, &user_id)
             .expect("messages should list");
         assert_eq!(messages.len(), BOTS.len() * 2, "no duplicate messages on second seed");
+
+        let posts =
+            repository::list_pending_posts(&mut conn, &user_id, chrono::Utc::now().timestamp())
+                .expect("posts should list");
+        let total_seed_posts: usize = BOTS.iter().map(|b| b.posts.len()).sum();
+        assert_eq!(
+            posts.len(),
+            total_seed_posts + EXTRA_BOT_POSTS.len(),
+            "no duplicate posts on second seed including extra posts"
+        );
     }
 
     #[test]

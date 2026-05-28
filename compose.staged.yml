@@ -1,3 +1,7 @@
+networks:
+  cloudflared:
+    external: true
+
 services:
   murmur-server:
     build:
@@ -10,10 +14,12 @@ services:
       DATABASE_URL: ${STAGED_DATABASE_URL:-/var/app/data/staged.sqlite3}
       PORT: ${STAGED_CONTAINER_PORT:-3000}
       BIND_ADDR: 0.0.0.0:${STAGED_CONTAINER_PORT:-3000}
-    ports:
-      - "${STAGED_HOST_PORT:-3000}:${STAGED_CONTAINER_PORT:-3000}"
     volumes:
       - murmur-staged-data:/var/app/data
+    networks:
+      cloudflared:
+        ipv4_address: ${STAGED_IPV4_ADDRESS:-10.5.234.234}
+
 
 volumes:
   murmur-staged-data:

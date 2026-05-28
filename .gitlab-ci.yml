@@ -52,8 +52,6 @@ test-server:
 
 package-staged-image:
   stage: package
-  tags:
-    - murmur-staged
   needs:
     - test-server
   script:
@@ -68,8 +66,6 @@ package-tsuru-image:
 
 deploy-staged:
   stage: deploy
-  tags:
-    - murmur-staged
   needs:
     - package-staged-image
   when: manual

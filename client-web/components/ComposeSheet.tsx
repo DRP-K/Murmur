@@ -143,51 +143,6 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
             />
           )}
 
-          {/* Audience picker */}
-          <div className="rounded-xl border border-zinc-200 dark:border-zinc-700">
-            <button
-              type="button"
-              onClick={() => setAudienceOpen((v) => !v)}
-              className="flex w-full items-center justify-between px-3 py-2 text-xs text-zinc-600 dark:text-zinc-300"
-            >
-              <span>
-                <span className="font-medium text-zinc-400 dark:text-zinc-500">Audience: </span>
-                {audienceLabel()}
-              </span>
-              {audienceOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-            </button>
-            {audienceOpen && (
-              <div className="border-t border-zinc-200 px-3 py-2 dark:border-zinc-700">
-                {allTags.length === 0 ? (
-                  <p className="py-1 text-xs text-zinc-400">No tags yet — create tags from a DM conversation.</p>
-                ) : (
-                  <div className="flex flex-col gap-1.5">
-                    <label className="flex cursor-pointer items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={selectedTagIds.size === 0}
-                        onChange={() => setSelectedTagIds(new Set())}
-                        className="h-3.5 w-3.5 accent-zinc-800 dark:accent-zinc-100"
-                      />
-                      <span className="text-xs text-zinc-700 dark:text-zinc-200">Everyone</span>
-                    </label>
-                    {allTags.map((tag) => (
-                      <label key={tag.id} className="flex cursor-pointer items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={selectedTagIds.has(tag.id)}
-                          onChange={() => toggleTag(tag.id)}
-                          className="h-3.5 w-3.5 accent-zinc-800 dark:accent-zinc-100"
-                        />
-                        <span className="text-xs text-zinc-700 dark:text-zinc-200">{tag.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-xs text-zinc-400 dark:text-zinc-500">Expires:</span>

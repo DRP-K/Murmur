@@ -72,8 +72,9 @@ deploy-staged:
   environment:
     name: staged
   script:
+    - docker compose -f compose.staged.yml down
     - docker compose -p murmur-staged -f compose.staged.yml up -d --build --remove-orphans
-    - docker compose -f compose.staged.yml ps
+    - docker compose -p murmur-staged -f compose.staged.yml ps
 
 deploy-production:
   stage: deploy
@@ -86,8 +87,9 @@ deploy-production:
   environment:
     name: production
   script:
+    - docker compose -f compose.production.yml down
     - docker compose -p murmur-production -f compose.production.yml up -d --build --remove-orphans
-    - docker compose -f compose.production.yml ps
+    - docker compose -p murmur-production -f compose.production.yml ps
 
 build-client-web:
   stage: build

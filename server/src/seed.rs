@@ -119,6 +119,7 @@ pub fn seed_for_new_user(conn: &mut SqliteConnection, new_user_id: &str) {
     if let Ok(friends) = repository::list_friends_for_user(conn, new_user_id) {
         let known: Vec<&str> = bot_ids.iter().map(|(id, _)| id.as_str()).collect();
         if friends.iter().any(|(fid, _, _)| known.contains(&fid.as_str())) {
+            ensure_extra_posts(conn, new_user_id, &bot_ids, Utc::now().timestamp());
             return;
         }
     }
@@ -194,7 +195,17 @@ pub fn seed_for_new_user(conn: &mut SqliteConnection, new_user_id: &str) {
         }
     }
 
-    // Add extra rich-media onboarding posts.
+    ensure_extra_posts(conn, new_user_id, &bot_ids, now);
+
+    info!(user_id = %new_user_id, bots = BOTS.len(), "user seeded");
+}
+
+fn ensure_extra_posts(
+    conn: &mut SqliteConnection,
+    new_user_id: &str,
+    bot_ids: &[(String, String)],
+    now: i64,
+) {
     for (i, extra) in EXTRA_BOT_POSTS.iter().enumerate() {
         let (extra_bot_id, _) = &bot_ids[extra.bot_index];
         let post_id = format!("seed:{extra_bot_id}:{new_user_id}:extra:{i}");
@@ -208,12 +219,10 @@ pub fn seed_for_new_user(conn: &mut SqliteConnection, new_user_id: &str) {
             media_ref_name: Some(extra.media_ref_name),
             image_url: Some(extra.image_url),
         };
-        if let Err(e) = repository::create_post_with_deliveries(conn, &post, &[new_user_id]) {
+        if let Err(e) = repository::ensure_rich_post_with_delivery(conn, &post, new_user_id) {
             warn!(post_id = %post_id, error = %e, "seed extra post failed");
         }
     }
-
-    info!(user_id = %new_user_id, bots = BOTS.len(), "user seeded");
 }
 
 fn hash_str(s: &str, salt: usize) -> usize {
@@ -225,7 +234,9 @@ fn hash_str(s: &str, salt: usize) -> usize {
 mod tests {
     use super::*;
     use crate::db::repository;
+    use crate::db::schema::{post_deliveries, posts};
     use crate::db::{establish_connection, run_migrations};
+    use diesel::prelude::*;
 
     fn setup_conn() -> SqliteConnection {
         let mut conn = establish_connection(":memory:").expect("in-memory sqlite should open");
@@ -403,6 +414,52 @@ mod tests {
             total_seed_posts + EXTRA_BOT_POSTS.len(),
             "no duplicate posts on second seed including extra posts"
         );
+    }
+
+    #[test]
+    fn seed_for_existing_user_repairs_and_redelivers_rich_extra_posts() {
+        let mut conn = setup_conn();
+        seed_bots(&mut conn);
+        let user_id = register_test_user(&mut conn, 55);
+
+        seed_for_new_user(&mut conn, &user_id);
+
+        let (bot_id, _) = bot_credentials(BOTS[0].seed);
+        let post_id = format!("seed:{bot_id}:{user_id}:extra:0");
+        repository::mark_post_delivered(&mut conn, &post_id, &user_id, 1234)
+            .expect("delivery should mark delivered");
+        diesel::update(posts::table.filter(posts::id.eq(&post_id)))
+            .set((
+                posts::category.eq(None::<String>),
+                posts::media_ref_name.eq(None::<String>),
+                posts::image_url.eq(None::<String>),
+            ))
+            .execute(&mut conn)
+            .expect("post metadata should be cleared");
+
+        seed_for_new_user(&mut conn, &user_id);
+
+        let repaired = posts::table
+            .filter(posts::id.eq(&post_id))
+            .select(crate::db::models::Post::as_select())
+            .first(&mut conn)
+            .expect("post should exist");
+        assert_eq!(repaired.category.as_deref(), Some("music"));
+        assert_eq!(repaired.media_ref_name.as_deref(), Some("Boston"));
+        assert!(
+            repaired
+                .image_url
+                .as_deref()
+                .is_some_and(|url| url.contains("mzstatic"))
+        );
+
+        let delivery = post_deliveries::table
+            .filter(post_deliveries::post_id.eq(&post_id))
+            .filter(post_deliveries::recipient_id.eq(&user_id))
+            .select(crate::db::models::PostDelivery::as_select())
+            .first(&mut conn)
+            .expect("delivery should exist");
+        assert_eq!(delivery.delivered_at, None);
     }
 
     #[test]

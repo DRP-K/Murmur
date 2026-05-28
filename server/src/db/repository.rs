@@ -99,6 +99,68 @@ pub fn create_post_with_deliveries(
     })
 }
 
+pub fn ensure_rich_post_with_delivery(
+    conn: &mut SqliteConnection,
+    post: &NewPost<'_>,
+    recipient_id: &str,
+) -> QueryResult<usize> {
+    conn.transaction(|conn| {
+        let existing = posts::table
+            .filter(posts::id.eq(post.id))
+            .select(Post::as_select())
+            .first(conn)
+            .optional()?;
+        let should_redeliver = existing.as_ref().is_none_or(|existing| {
+            existing.content != post.content
+                || existing.category.as_deref() != post.category
+                || existing.media_ref_name.as_deref() != post.media_ref_name
+                || existing.image_url.as_deref() != post.image_url
+        });
+
+        match existing {
+            Some(_) => {
+                diesel::update(posts::table.filter(posts::id.eq(post.id)))
+                    .set((
+                        posts::author_id.eq(post.author_id),
+                        posts::content.eq(post.content),
+                        posts::timestamp.eq(post.timestamp),
+                        posts::expires_at.eq(post.expires_at),
+                        posts::category.eq(post.category),
+                        posts::media_ref_name.eq(post.media_ref_name),
+                        posts::image_url.eq(post.image_url),
+                    ))
+                    .execute(conn)?;
+            }
+            None => {
+                diesel::insert_into(posts::table)
+                    .values(post)
+                    .execute(conn)?;
+            }
+        }
+
+        let delivery = NewPostDelivery {
+            post_id: post.id,
+            recipient_id,
+            delivered_at: None,
+        };
+
+        if should_redeliver {
+            diesel::insert_into(post_deliveries::table)
+                .values(&delivery)
+                .on_conflict((post_deliveries::post_id, post_deliveries::recipient_id))
+                .do_update()
+                .set(post_deliveries::delivered_at.eq(None::<i64>))
+                .execute(conn)
+        } else {
+            diesel::insert_into(post_deliveries::table)
+                .values(&delivery)
+                .on_conflict((post_deliveries::post_id, post_deliveries::recipient_id))
+                .do_nothing()
+                .execute(conn)
+        }
+    })
+}
+
 pub fn mark_post_delivered(
     conn: &mut SqliteConnection,
     post_id: &str,

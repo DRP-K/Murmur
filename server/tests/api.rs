@@ -234,62 +234,6 @@ async fn offline_message_queue_pull_and_ack() {
 }
 
 #[tokio::test]
-async fn message_ack_body_handles_seed_style_ids() {
-    let app = app();
-    let alice = test_user(4);
-    let bob = test_user(5);
-    register_user(app.clone(), &alice).await;
-    register_user(app.clone(), &bob).await;
-    let alice_token = auth_user(app.clone(), &alice).await;
-    let bob_token = auth_user(app.clone(), &bob).await;
-    let message_id =
-        "seed:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:friend_added";
-
-    let send = request(
-        app.clone(),
-        "POST",
-        "/api/messages",
-        Some(&alice_token),
-        json!({
-            "id": message_id,
-            "recipient_id": bob.user_id,
-            "payload_hex": "6869",
-            "nonce_hex": "000000000000000000000000",
-            "msg_type": "friend_added",
-            "sent_at": 123,
-        }),
-    )
-    .await;
-    assert_eq!(send.status(), StatusCode::ACCEPTED);
-
-    let ack = request(
-        app.clone(),
-        "POST",
-        "/api/messages/ack",
-        Some(&bob_token),
-        json!({ "message_id": message_id }),
-    )
-    .await;
-    assert_eq!(ack.status(), StatusCode::NO_CONTENT);
-
-    let pull_after = request(app, "GET", "/api/messages", Some(&bob_token), json!({})).await;
-    let body = pull_after
-        .into_body()
-        .collect()
-        .await
-        .expect("body")
-        .to_bytes();
-    let pulled: Value = serde_json::from_slice(&body).expect("messages response should parse");
-    assert!(
-        pulled["messages"]
-            .as_array()
-            .expect("messages array")
-            .iter()
-            .all(|m| m["id"] != message_id)
-    );
-}
-
-#[tokio::test]
 async fn post_fanout_and_friend_add() {
     let app = app();
     let alice = test_user(4);
@@ -694,6 +638,25 @@ async fn new_user_gets_seeded_friends_posts_and_welcome_messages() {
         posts["posts"].as_array().expect("posts array").len() >= 3,
         "at least one post per bot expected"
     );
+    for (category, media_ref_name) in [
+        ("music", "Boston"),
+        ("games", "Portal 2"),
+        ("movies", "Fuze"),
+    ] {
+        let post = posts["posts"]
+            .as_array()
+            .expect("posts array")
+            .iter()
+            .find(|post| post["media_ref_name"] == media_ref_name)
+            .unwrap_or_else(|| panic!("expected {media_ref_name} seed post"));
+        assert_eq!(post["category"], category);
+        assert!(
+            post["image_url"]
+                .as_str()
+                .is_some_and(|url| !url.is_empty()),
+            "expected seed post image url"
+        );
+    }
 
     // Should have one friend_added + one dm welcome per bot.
     let msg_resp =

@@ -5,7 +5,6 @@ import type {
   RegisterRequest,
   SendMessageRequest,
   MessageListResponse,
-  AckMessageRequest,
   CreatePostRequest,
   PostListResponse,
   AckPostRequest,
@@ -95,9 +94,8 @@ export async function getMessages(token: string): Promise<MessageListResponse> {
 }
 
 export async function ackMessage(token: string, messageId: string): Promise<void> {
-  const body: AckMessageRequest = { message_id: messageId }
   await requireOk(
-    await authedFetch(token, '/api/messages/ack', { method: 'POST', body: JSON.stringify(body) }),
+    await authedFetch(token, `/api/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE' }),
   )
 }
 

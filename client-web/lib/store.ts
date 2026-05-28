@@ -55,33 +55,6 @@ function postsMatch(a: Post, b: Post): boolean {
   )
 }
 
-const SEED_EXTRA_POST_METADATA = [
-  {
-    category: 'music',
-    media_ref_name: 'Boston',
-    image_url:
-      'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/7c/de/5e/7cde5e7a-612d-9714-d34c-1eb234c85ebb/810129961546.jpg/170x170bb.png',
-  },
-  {
-    category: 'games',
-    media_ref_name: 'Portal 2',
-    image_url: 'https://media.rawg.io/media/games/2ba/2bac0e87cf45e5b508f227d281c9252a.jpg',
-  },
-  {
-    category: 'movies',
-    media_ref_name: 'Fuze',
-    image_url: 'https://image.tmdb.org/t/p/w200/huKckuD90OblEHH8MYfekHvCPfp.jpg',
-  },
-] satisfies Array<Pick<Post, 'category' | 'media_ref_name' | 'image_url'>>
-
-function enrichSeedPost(post: Post): Post {
-  const match = post.id.match(/^seed:[^:]+:[^:]+:extra:(\d+)$/)
-  if (!match) return post
-
-  const metadata = SEED_EXTRA_POST_METADATA[Number(match[1])]
-  return metadata ? mergePost(post, { ...post, ...metadata }) : post
-}
-
 interface AppState {
   userId: string | null
   pubkeyHex: string | null
@@ -149,8 +122,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
       db.conversations.toArray(),
       db.posts.orderBy('timestamp').reverse().toArray(),
     ])
-    const posts = storedPosts.map(enrichSeedPost)
-
     const messagesByConv: Record<string, LocalMessage[]> = {}
     for (const { convId, ...msg } of storedMsgs) {
       ;(messagesByConv[convId] ??= []).push(msg)
@@ -163,20 +134,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
       storedConvs.map((c) => [c.conversationId, c]),
     )
 
-    set({ messagesByConv, conversations, posts })
-    for (const post of posts) {
-      const original = storedPosts.find((stored) => stored.id === post.id)
-      if (original && !postsMatch(post, original)) db.posts.put(post).catch(console.error)
-    }
+    set({ messagesByConv, conversations, posts: storedPosts })
   },
 
   addPosts: (incoming) => {
-    const posts = incoming.map(enrichSeedPost)
     const changedPosts: Post[] = []
     set((state) => {
-      const incomingById = new Map(posts.map((post) => [post.id, post]))
+      const incomingById = new Map(incoming.map((post) => [post.id, post]))
       const existingIds = new Set(state.posts.map((p) => p.id))
-      const fresh = posts.filter((p) => !existingIds.has(p.id))
+      const fresh = incoming.filter((p) => !existingIds.has(p.id))
       let changed = fresh.length > 0
 
       const mergedExisting = state.posts.map((post) => {
@@ -204,22 +170,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   addPost: (post) => {
-    const incoming = enrichSeedPost(post)
     let changedPost: Post | null = null
     set((state) => {
-      const existing = state.posts.find((p) => p.id === incoming.id)
+      const existing = state.posts.find((p) => p.id === post.id)
       if (existing) {
-        const merged = mergePost(existing, incoming)
+        const merged = mergePost(existing, post)
         if (postsMatch(merged, existing)) {
           return state
         }
 
         changedPost = merged
-        return { posts: state.posts.map((p) => (p.id === incoming.id ? merged : p)) }
+        return { posts: state.posts.map((p) => (p.id === post.id ? merged : p)) }
       }
 
-      changedPost = incoming
-      return { posts: [incoming, ...state.posts] }
+      changedPost = post
+      return { posts: [post, ...state.posts] }
     })
     if (changedPost) db.posts.put(changedPost).catch(console.error)
   },

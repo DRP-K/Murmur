@@ -18,9 +18,9 @@ use crate::db::models::{NewPendingMessage, NewPost};
 use crate::db::repository;
 use crate::seed;
 use crate::wire::{
-    AckMessageRequest, AckPostRequest, AddFriendRequest, AuthRequest, AuthResponse,
-    CreatePostRequest, FriendInfo, FriendListResponse, MessageListResponse, PostListResponse,
-    RegisterRequest, SendMessageRequest, ServerEnvelope,
+    AckPostRequest, AddFriendRequest, AuthRequest, AuthResponse, CreatePostRequest, FriendInfo,
+    FriendListResponse, MessageListResponse, PostListResponse, RegisterRequest, SendMessageRequest,
+    ServerEnvelope,
 };
 
 #[derive(Debug)]
@@ -192,26 +192,10 @@ pub async fn delete_message(
     headers: HeaderMap,
     Path(message_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    ack_message_for_user(&state, &headers, &message_id)
-}
-
-pub async fn ack_message(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(payload): Json<AckMessageRequest>,
-) -> Result<StatusCode, ApiError> {
-    ack_message_for_user(&state, &headers, &payload.message_id)
-}
-
-fn ack_message_for_user(
-    state: &AppState,
-    headers: &HeaderMap,
-    message_id: &str,
-) -> Result<StatusCode, ApiError> {
-    let user_id = authed_user(headers, state)?;
+    let user_id = authed_user(&headers, &state)?;
     let mut conn = state.pool.get().map_err(db_error)?;
-    let deleted =
-        repository::ack_message_for_recipient(&mut conn, message_id, &user_id).map_err(db_error)?;
+    let deleted = repository::ack_message_for_recipient(&mut conn, &message_id, &user_id)
+        .map_err(db_error)?;
 
     if deleted == 0 {
         warn!(user_id = %user_id, message_id = %message_id, "message ack missed");

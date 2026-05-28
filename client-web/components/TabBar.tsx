@@ -19,7 +19,7 @@ export function TabBar() {
   }
 
   return (
-    <nav className="flex border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+    <nav className="fixed bottom-0 left-1/2 z-10 w-full max-w-md -translate-x-1/2 flex border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
       {tabs.map(({ label, path, icon: Icon }) => {
         const active = isActive(path)
         return (

@@ -36,6 +36,7 @@ export default function ConversationPage() {
     [conversationId, messagesByConv],
   )
   const [friendName, setFriendName] = useState<string | null>(null)
+  const [metAtEvent, setMetAtEvent] = useState<string | null>(null)
   const [blocked, setBlocked] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuSection, setMenuSection] = useState<'main' | 'nickname' | 'tags'>('main')
@@ -50,6 +51,7 @@ export default function ConversationPage() {
     if (!friendId) return
     db.friends.get(friendId).then((f) => {
       setFriendName(f?.nickname ?? null)
+      setMetAtEvent(f?.metAtEvent ?? null)
       setBlocked(f?.blockedAt !== null && f?.blockedAt !== undefined)
     })
   }, [friendId])
@@ -184,7 +186,12 @@ export default function ConversationPage() {
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
           {displayName.charAt(0).toUpperCase()}
         </div>
-        <span className="flex-1 text-sm font-medium text-zinc-800 dark:text-zinc-100">{displayName}</span>
+        <div className="flex-1">
+          <p className="text-sm font-medium text-zinc-800 dark:text-zinc-100">{displayName}</p>
+          {metAtEvent && (
+            <p className="text-xs text-zinc-400">{metAtEvent}</p>
+          )}
+        </div>
         <button onClick={openMenu} className="text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200">
           <MoreVertical size={20} />
         </button>

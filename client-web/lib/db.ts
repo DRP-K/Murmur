@@ -14,6 +14,7 @@ export interface LocalFriend {
   pubkeyHex: string
   dhSharedHex: string
   nickname: string | null
+  metAtEvent: string | null
   blockedAt: number | null
 }
 
@@ -123,6 +124,9 @@ class MurmurDatabase extends Dexie {
     })
     this.version(7).stores({
       posts: 'id, timestamp, category',
+    })
+    this.version(8).stores({
+      friends: 'userId, blockedAt, metAtEvent',
     })
   }
 }

@@ -18,6 +18,7 @@ interface FriendRow {
   conversationId: string
   friendId: string
   friendName: string | null
+  metAtEvent: string | null
 }
 
 interface AnonSummary {
@@ -116,6 +117,7 @@ function ChatListPage() {
         conversationId: makeConversationId(myId, f.userId),
         friendId: f.userId,
         friendName: f.nickname,
+        metAtEvent: f.metAtEvent,
       })),
     )
   }, [addMessage, loadFriends, upsertConversation])
@@ -138,6 +140,7 @@ function ChatListPage() {
         conversationId: makeConversationId(myId, f.userId),
         friendId: f.userId,
         friendName: f.nickname,
+        metAtEvent: f.metAtEvent,
       })),
     )
   }, [loadFriends])
@@ -181,6 +184,7 @@ function ChatListPage() {
   // conversation rows always reflect the latest nickname even if the Zustand
   // store has a stale value from before the user last edited it.
   const nickMap = new Map(friends.map((f) => [f.friendId, f.friendName]))
+  const eventMap = new Map(friends.map((f) => [f.friendId, f.metAtEvent]))
 
   function displayName(friendId: string, storedName: string | null): string {
     const nick = nickMap.get(friendId) ?? storedName
@@ -208,6 +212,7 @@ function ChatListPage() {
               <ChatRow
                 key={c.conversationId}
                 name={displayName(c.friendId, c.friendName)}
+                metAtEvent={eventMap.get(c.friendId) ?? null}
                 preview={c.lastMessage}
                 timestamp={c.lastAt}
                 unread={c.unread}
@@ -224,6 +229,7 @@ function ChatListPage() {
                   <ChatRow
                     key={f.friendId}
                     name={f.friendName ?? f.friendId}
+                    metAtEvent={f.metAtEvent}
                     preview="No messages yet — say hi!"
                     timestamp={0}
                     onClick={() => router.push(`/chats?id=${encodeURIComponent(f.conversationId)}`)}

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { ensureAnonThread } from '@/hooks/useAnonSink'
 import { processFriendAdded } from '@/hooks/useFriendSink'
 import { useAppStore, type ConversationMeta } from '@/lib/store'
-import { getMessages, ackMessage } from '@/lib/relay'
+import { getMessages } from '@/lib/relay'
 import { decodePayload as decode } from '@/lib/crypto'
 import * as ws from '@/lib/ws'
 import { db } from '@/lib/db'
@@ -98,7 +98,6 @@ function ChatListPage() {
         isOwn: env.sender_id === myId,
         status: 'delivered',
       })
-      ackMessage(tok, env.id).catch(() => {})
 
       // Enrich with friendName from Dexie if available.
       const friend = await db.friends.get(env.sender_id)

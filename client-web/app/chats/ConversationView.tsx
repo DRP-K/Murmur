@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Send, MoreVertical, X } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
-import { sendMessage, getMessages, ackMessage } from '@/lib/relay'
+import { sendMessage, getMessages } from '@/lib/relay'
 import { encodePayload, decodePayload } from '@/lib/crypto'
 import * as ws from '@/lib/ws'
 import { db } from '@/lib/db'
@@ -101,7 +101,6 @@ export default function ConversationPage() {
           isOwn: env.sender_id === userId,
           status: 'delivered',
         })
-        ackMessage(token, env.id).catch(() => {})
       }
     }).catch(console.error)
   }, [bootstrapped, token, userId, conversationId, addMessage])
@@ -119,8 +118,6 @@ export default function ConversationPage() {
         if (!myId) return
         const convId = [myId, env.sender_id].sort().join('-')
         if (convId !== conversationId) return
-        const tok = useAppStore.getState().token
-        if (tok) ackMessage(tok, env.id).catch(() => {})
       }
     })
   }, [conversationId, updateMessageStatus])

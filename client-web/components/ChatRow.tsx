@@ -2,6 +2,7 @@
 
 interface Props {
   name: string
+  metAtEvent?: string | null
   preview: string
   timestamp: number
   unread?: number
@@ -16,7 +17,7 @@ function relativeTime(unixSec: number): string {
   return `${Math.floor(diff / 86400)}d`
 }
 
-export function ChatRow({ name, preview, timestamp, unread, isAnon, onClick }: Props) {
+export function ChatRow({ name, metAtEvent, preview, timestamp, unread, isAnon, onClick }: Props) {
   return (
     <button
       onClick={onClick}
@@ -28,9 +29,14 @@ export function ChatRow({ name, preview, timestamp, unread, isAnon, onClick }: P
 
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">
-            {name}
-          </span>
+          <div className="flex min-w-0 items-baseline gap-1.5">
+            <span className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">
+              {name}
+            </span>
+            {!!metAtEvent && !isAnon && (
+              <span className="truncate text-xs text-zinc-400">· {metAtEvent}</span>
+            )}
+          </div>
           <span className="flex-shrink-0 text-xs text-zinc-400">{relativeTime(timestamp)}</span>
         </div>
         <p className="truncate text-xs text-zinc-400">{preview}</p>

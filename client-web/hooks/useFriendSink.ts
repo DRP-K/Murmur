@@ -49,6 +49,7 @@ export async function processFriendAdded(
     pubkeyHex: friendPubkey,
     dhSharedHex: shared,
     nickname: nickname ?? null,
+    metAtEvent: null,
     blockedAt: null,
   })
   console.log('[friend_sink] friend stored in Dexie:', friendId.slice(0, 8))

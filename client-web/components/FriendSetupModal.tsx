@@ -8,15 +8,18 @@ import { TagSelector } from '@/components/TagSelector'
 interface Props {
   friendId: string
   initialNickname: string | null
+  initialMetAtEvent?: string | null
   onDone: () => void
 }
 
-export function FriendSetupModal({ friendId, initialNickname, onDone }: Props) {
+export function FriendSetupModal({ friendId, initialNickname, initialMetAtEvent, onDone }: Props) {
   const [nickname, setNickname] = useState(initialNickname ?? '')
+  const [metAtEvent, setMetAtEvent] = useState(initialMetAtEvent ?? '')
 
   async function handleDone() {
     const nick = nickname.trim() || null
-    await db.friends.update(friendId, { nickname: nick })
+    const event = metAtEvent.trim() || null
+    await db.friends.update(friendId, { nickname: nick, metAtEvent: event })
     onDone()
   }
 
@@ -46,6 +49,19 @@ export function FriendSetupModal({ friendId, initialNickname, onDone }: Props) {
               onKeyDown={(e) => e.key === 'Enter' && handleDone()}
               placeholder="e.g. Alice"
               maxLength={40}
+              className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-zinc-500">
+              Met at event <span className="font-normal text-zinc-400">(optional)</span>
+            </label>
+            <input
+              value={metAtEvent}
+              onChange={(e) => setMetAtEvent(e.target.value)}
+              placeholder="e.g. JSConf 2026"
+              maxLength={80}
               className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
             />
           </div>

@@ -28,12 +28,11 @@ export default function FriendsPage() {
   const [scanResult, setScanResult] = useState<QrPayload | null>(null)
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [setupFriend, setSetupFriend] = useState<{ friendId: string; nickname: string | null } | null>(null)
+  const [setupFriend, setSetupFriend] = useState<{ friendId: string; nickname: string | null; metAtEvent: string | null } | null>(null)
 
   // Manual "add by ID" fields.
   const [manualId, setManualId] = useState('')
   const [manualPubkey, setManualPubkey] = useState('')
-  const [manualNickname, setManualNickname] = useState('')
 
   // QR payload for others to scan me.
   const myQrPayload: QrPayload = useMemo(
@@ -63,6 +62,7 @@ export default function FriendsPage() {
     friendId: string,
     friendPubkey: string,
     nickname: string | null,
+    metAtEvent: string | null,
   ) {
     if (!token || !userId) return
     console.log('[friends] doAddFriend: adding', friendId.slice(0,8), 'pubkey len:', friendPubkey.length)
@@ -81,6 +81,7 @@ export default function FriendsPage() {
         pubkeyHex: friendPubkey,
         dhSharedHex: shared,
         nickname,
+        metAtEvent,
         blockedAt: null,
       })
       console.log('[friends] stored in local Dexie')
@@ -92,8 +93,7 @@ export default function FriendsPage() {
       setScanResult(null)
       setManualId('')
       setManualPubkey('')
-      setManualNickname('')
-      setSetupFriend({ friendId, nickname })
+      setSetupFriend({ friendId, nickname, metAtEvent })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add friend')
     } finally {
@@ -103,7 +103,12 @@ export default function FriendsPage() {
 
   function handleAddFromScan() {
     if (!scanResult) return
-    doAddFriend(scanResult.user_id, scanResult.pubkey_hex, scanResult.nickname)
+    doAddFriend(
+      scanResult.user_id,
+      scanResult.pubkey_hex,
+      scanResult.nickname ?? null,
+      null,
+    )
   }
 
   function handleAddById(e: React.FormEvent) {
@@ -111,7 +116,7 @@ export default function FriendsPage() {
     const id = manualId.trim()
     const pk = manualPubkey.trim()
     if (!id || !pk) { setError('User ID and pubkey are required'); return }
-    doAddFriend(id, pk, manualNickname.trim() || null)
+    doAddFriend(id, pk, null, null)
   }
 
   if (!bootstrapped) {
@@ -183,6 +188,7 @@ export default function FriendsPage() {
                 <p className="mb-1 text-xs font-medium text-green-700 dark:text-green-300">Friend found:</p>
                 <code className="text-xs text-green-600 dark:text-green-400">{scanResult.user_id.slice(0, 16)}…</code>
                 {scanResult.nickname && <p className="mt-1 text-xs text-green-600 dark:text-green-400">&quot;{scanResult.nickname}&quot;</p>}
+
                 <button onClick={handleAddFromScan} disabled={adding}
                   className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-green-600 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-40">
                   <UserPlus size={14} />{adding ? 'Adding…' : 'Add Friend'}
@@ -209,12 +215,6 @@ export default function FriendsPage() {
               placeholder="Ed25519 pubkey in hex..."
               className="mb-3 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100" />
 
-            <label className="mb-1 block text-xs font-medium text-zinc-500">Nickname (optional)</label>
-            <input value={manualNickname} onChange={(e) => setManualNickname(e.target.value)}
-              placeholder="Alice"
-              maxLength={40}
-              className="mb-4 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100" />
-
             <button type="submit" disabled={adding}
               className="flex w-full items-center justify-center gap-2 rounded-full bg-zinc-900 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-40 dark:bg-white dark:text-zinc-900">
               <Hash size={14} />{adding ? 'Adding…' : 'Add by ID'}
@@ -231,6 +231,7 @@ export default function FriendsPage() {
         <FriendSetupModal
           friendId={setupFriend.friendId}
           initialNickname={setupFriend.nickname}
+          initialMetAtEvent={setupFriend.metAtEvent}
           onDone={() => setSetupFriend(null)}
         />
       )}

@@ -10,6 +10,7 @@ use crate::db::repository;
 struct BotDef {
     seed: u8,
     name: &'static str,
+    met_at_event: &'static str,
     posts: &'static [&'static str],
     welcomes: &'static [&'static str],
 }
@@ -25,7 +26,8 @@ struct ExtraPostDef {
 const BOTS: &[BotDef] = &[
     BotDef {
         seed: 1,
-        name: "BOT_1",
+        name: "Timothy",
+        met_at_event: "Met at London Indie Night",
         posts: &[
             "Just got here and already loving the vibe ✨",
             "What's everyone listening to this week?",
@@ -38,7 +40,8 @@ const BOTS: &[BotDef] = &[
     },
     BotDef {
         seed: 2,
-        name: "BOT_2",
+        name: "Priya",
+        met_at_event: "Met at Hack & Chill Meetup",
         posts: &[
             "Hot take: game soundtracks are some of the best music ever made 🎮",
             "Currently rewatching Succession for the third time, no regrets",
@@ -51,7 +54,8 @@ const BOTS: &[BotDef] = &[
     },
     BotDef {
         seed: 3,
-        name: "BOT_3",
+        name: "Marcus",
+        met_at_event: "Met at Friday Film Club",
         posts: &[
             "Discovered a tiny band from Iceland last night and now nothing else exists",
             "Finished a great book this weekend, feeling that specific happy-sad 📚",
@@ -161,6 +165,7 @@ pub fn seed_for_new_user(conn: &mut SqliteConnection, new_user_id: &str) {
             "user_id": bot_id,
             "pubkey_hex": bot_pubkey_hex,
             "nickname": bot.name,
+            "met_at_event": bot.met_at_event,
         })
         .to_string();
         let fa_payload_hex = hex::encode(fa_payload.as_bytes());
@@ -395,7 +400,11 @@ mod tests {
             assert!(payload["user_id"].is_string(), "user_id missing");
             assert!(payload["pubkey_hex"].is_string(), "pubkey_hex missing");
             let nickname = payload["nickname"].as_str().expect("nickname missing");
-            assert_eq!(nickname, format!("BOT_{}", i + 1), "unexpected nickname");
+            assert_eq!(nickname, BOTS[i].name, "unexpected nickname");
+            let met_at_event = payload["met_at_event"]
+                .as_str()
+                .expect("met_at_event missing");
+            assert_eq!(met_at_event, BOTS[i].met_at_event, "unexpected met_at_event");
         }
     }
 

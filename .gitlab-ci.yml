@@ -129,7 +129,41 @@ deploy-pages:
     - test -n "$CLOUDFLARE_ACCOUNT_ID"
   script:
     - npx wrangler pages deploy client-web/dist --project-name murmur
+deploy-pages-preview:
+  stage: deploy
+  image: node:22-alpine
+  needs:
+    - build-client-web
+  rules:
+    - if: '$CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+      when: manual
+    - when: never
+  environment:
+    name: cloudflare-pages-preview/$CI_COMMIT_REF_SLUG
+    url: https://murmur-dev-server.pages.dev
+    on_stop: stop-pages-preview
+  before_script:
+    - test -n "$CLOUDFLARE_API_TOKEN"
+    - test -n "$CLOUDFLARE_ACCOUNT_ID"
+  script:
+    - npx wrangler pages deploy client-web/dist --project-name murmur --branch "$CI_COMMIT_REF_SLUG"
 
+stop-pages-preview:
+  stage: deploy
+  image: node:22-alpine
+  needs: []
+  rules:
+    - if: '$CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
+      when: manual
+    - when: never
+  environment:
+    name: cloudflare-pages-preview/$CI_COMMIT_REF_SLUG
+    action: stop
+  before_script:
+    - test -n "$CLOUDFLARE_API_TOKEN"
+    - test -n "$CLOUDFLARE_ACCOUNT_ID"
+  script:
+    - npx wrangler pages deployment delete --project-name murmur --branch "$CI_COMMIT_REF_SLUG" || true
 sast:
   stage: test
 

@@ -118,7 +118,10 @@ pub fn seed_for_new_user(conn: &mut SqliteConnection, new_user_id: &str) {
     let bot_ids: Vec<(String, String)> = BOTS.iter().map(|b| bot_credentials(b.seed)).collect();
     if let Ok(friends) = repository::list_friends_for_user(conn, new_user_id) {
         let known: Vec<&str> = bot_ids.iter().map(|(id, _)| id.as_str()).collect();
-        if friends.iter().any(|(fid, _, _)| known.contains(&fid.as_str())) {
+        if friends
+            .iter()
+            .any(|(fid, _, _)| known.contains(&fid.as_str()))
+        {
             ensure_extra_posts(conn, new_user_id, &bot_ids, Utc::now().timestamp());
             return;
         }
@@ -145,9 +148,7 @@ pub fn seed_for_new_user(conn: &mut SqliteConnection, new_user_id: &str) {
                 image_url: None,
                 media_ref_name: None,
             };
-            if let Err(e) =
-                repository::create_post_with_deliveries(conn, &post, &[new_user_id])
-            {
+            if let Err(e) = repository::create_post_with_deliveries(conn, &post, &[new_user_id]) {
                 warn!(post_id = %post_id, error = %e, "seed post failed");
             }
         }
@@ -261,8 +262,7 @@ mod tests {
 
         for bot in BOTS {
             let (user_id, _) = bot_credentials(bot.seed);
-            repository::get_user(&mut conn, &user_id)
-                .expect("bot user should exist in database");
+            repository::get_user(&mut conn, &user_id).expect("bot user should exist in database");
         }
     }
 
@@ -286,8 +286,8 @@ mod tests {
 
         seed_for_new_user(&mut conn, &user_id);
 
-        let friends = repository::list_friends_for_user(&mut conn, &user_id)
-            .expect("friends should list");
+        let friends =
+            repository::list_friends_for_user(&mut conn, &user_id).expect("friends should list");
         assert_eq!(friends.len(), BOTS.len(), "one friendship per bot");
 
         let total_seed_posts: usize = BOTS.iter().map(|b| b.posts.len()).sum();
@@ -300,10 +300,8 @@ mod tests {
             "all seed posts delivered including extra posts"
         );
 
-        let bot_ids_by_index: Vec<String> = BOTS
-            .iter()
-            .map(|bot| bot_credentials(bot.seed).0)
-            .collect();
+        let bot_ids_by_index: Vec<String> =
+            BOTS.iter().map(|bot| bot_credentials(bot.seed).0).collect();
         let extra_posts: Vec<_> = posts
             .iter()
             .filter(|p| p.category.is_some() && p.media_ref_name.is_some() && p.image_url.is_some())
@@ -319,13 +317,15 @@ mod tests {
                 .find(|p| p.media_ref_name.as_deref() == Some(expected.media_ref_name))
                 .expect("expected extra post should be present");
             assert_eq!(
-                actual.author_id,
-                bot_ids_by_index[expected.bot_index],
+                actual.author_id, bot_ids_by_index[expected.bot_index],
                 "extra post author should match configured bot"
             );
             assert_eq!(actual.content, expected.content);
             assert_eq!(actual.category.as_deref(), Some(expected.category));
-            assert_eq!(actual.media_ref_name.as_deref(), Some(expected.media_ref_name));
+            assert_eq!(
+                actual.media_ref_name.as_deref(),
+                Some(expected.media_ref_name)
+            );
             assert_eq!(actual.image_url.as_deref(), Some(expected.image_url));
             if idx == 1 {
                 assert!(
@@ -336,11 +336,18 @@ mod tests {
         }
 
         // Each bot sends 2 messages: friend_added + dm welcome.
-        let messages = repository::list_pending_messages(&mut conn, &user_id)
-            .expect("messages should list");
-        assert_eq!(messages.len(), BOTS.len() * 2, "two messages per bot (friend_added + dm)");
+        let messages =
+            repository::list_pending_messages(&mut conn, &user_id).expect("messages should list");
         assert_eq!(
-            messages.iter().filter(|m| m.msg_type == "friend_added").count(),
+            messages.len(),
+            BOTS.len() * 2,
+            "two messages per bot (friend_added + dm)"
+        );
+        assert_eq!(
+            messages
+                .iter()
+                .filter(|m| m.msg_type == "friend_added")
+                .count(),
             BOTS.len(),
         );
         assert_eq!(
@@ -357,8 +364,8 @@ mod tests {
 
         seed_for_new_user(&mut conn, &user_id);
 
-        let messages = repository::list_pending_messages(&mut conn, &user_id)
-            .expect("messages should list");
+        let messages =
+            repository::list_pending_messages(&mut conn, &user_id).expect("messages should list");
         for msg in messages.iter().filter(|m| m.msg_type == "dm") {
             let decoded = hex::decode(&msg.payload_hex).expect("payload should be valid hex");
             let text = std::str::from_utf8(&decoded).expect("payload should be valid utf-8");
@@ -374,9 +381,13 @@ mod tests {
 
         seed_for_new_user(&mut conn, &user_id);
 
-        let messages = repository::list_pending_messages(&mut conn, &user_id)
-            .expect("messages should list");
-        for (i, msg) in messages.iter().filter(|m| m.msg_type == "friend_added").enumerate() {
+        let messages =
+            repository::list_pending_messages(&mut conn, &user_id).expect("messages should list");
+        for (i, msg) in messages
+            .iter()
+            .filter(|m| m.msg_type == "friend_added")
+            .enumerate()
+        {
             let decoded = hex::decode(&msg.payload_hex).expect("payload should be valid hex");
             let text = std::str::from_utf8(&decoded).expect("payload should be valid utf-8");
             let payload: serde_json::Value =
@@ -397,13 +408,21 @@ mod tests {
         seed_for_new_user(&mut conn, &user_id);
         seed_for_new_user(&mut conn, &user_id); // second call should be a no-op
 
-        let friends = repository::list_friends_for_user(&mut conn, &user_id)
-            .expect("friends should list");
-        assert_eq!(friends.len(), BOTS.len(), "no duplicate friendships on second seed");
+        let friends =
+            repository::list_friends_for_user(&mut conn, &user_id).expect("friends should list");
+        assert_eq!(
+            friends.len(),
+            BOTS.len(),
+            "no duplicate friendships on second seed"
+        );
 
-        let messages = repository::list_pending_messages(&mut conn, &user_id)
-            .expect("messages should list");
-        assert_eq!(messages.len(), BOTS.len() * 2, "no duplicate messages on second seed");
+        let messages =
+            repository::list_pending_messages(&mut conn, &user_id).expect("messages should list");
+        assert_eq!(
+            messages.len(),
+            BOTS.len() * 2,
+            "no duplicate messages on second seed"
+        );
 
         let posts =
             repository::list_pending_posts(&mut conn, &user_id, chrono::Utc::now().timestamp())
@@ -470,11 +489,13 @@ mod tests {
 
         seed_for_new_user(&mut conn, &user_id);
 
-        let messages = repository::list_pending_messages(&mut conn, &user_id)
-            .expect("messages should list");
+        let messages =
+            repository::list_pending_messages(&mut conn, &user_id).expect("messages should list");
 
-        let all_defined_welcomes: Vec<&str> =
-            BOTS.iter().flat_map(|b| b.welcomes.iter().copied()).collect();
+        let all_defined_welcomes: Vec<&str> = BOTS
+            .iter()
+            .flat_map(|b| b.welcomes.iter().copied())
+            .collect();
 
         for msg in messages.iter().filter(|m| m.msg_type == "dm") {
             let decoded = hex::decode(&msg.payload_hex).expect("payload should be valid hex");

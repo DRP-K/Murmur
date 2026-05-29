@@ -32,6 +32,14 @@ impl AppState {
             info!("DEEPSEEK_API_KEY found — bots will use DeepSeek for replies");
             Arc::new(k)
         });
+        Self::with_key(pool, deepseek_api_key)
+    }
+
+    pub fn without_ai(pool: DbPool) -> Self {
+        Self::with_key(pool, None)
+    }
+
+    fn with_key(pool: DbPool, deepseek_api_key: Option<Arc<String>>) -> Self {
         Self {
             pool,
             sessions: Arc::new(RwLock::new(HashMap::new())),
@@ -45,6 +53,20 @@ impl AppState {
     pub fn from_database_url(
         database_url: &str,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        let pool = Self::init_pool(database_url)?;
+        Ok(Self::new(pool))
+    }
+
+    pub fn from_database_url_without_ai(
+        database_url: &str,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        let pool = Self::init_pool(database_url)?;
+        Ok(Self::without_ai(pool))
+    }
+
+    fn init_pool(
+        database_url: &str,
+    ) -> Result<DbPool, Box<dyn std::error::Error + Send + Sync + 'static>> {
         let pool = establish_pool(database_url)?;
         {
             let mut conn = pool.get()?;
@@ -52,7 +74,7 @@ impl AppState {
             seed::seed_bots(&mut conn);
         }
         debug!("database pool initialized and migrations applied");
-        Ok(Self::new(pool))
+        Ok(pool)
     }
 
     pub fn user_for_token(&self, token: &str) -> Option<String> {

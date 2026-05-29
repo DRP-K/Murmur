@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 use crate::app::AppState;
 use crate::auth::{AuthError, validate_registration, verify_auth_request};
+use crate::bot_ai::{self, ChatMessage};
 use crate::db::models::{NewPendingMessage, NewPost};
 use crate::db::repository;
 use crate::seed;
@@ -91,11 +92,74 @@ pub async fn register(
 ) -> Result<StatusCode, ApiError> {
     validate_registration(&payload.user_id, &payload.pubkey_hex)?;
 
+    let use_ai = state.deepseek_api_key.is_some();
     let mut conn = state.pool.get().map_err(db_error)?;
     repository::register_user(&mut conn, &payload.user_id, &payload.pubkey_hex, now_ts())
         .map_err(db_error)?;
 
-    seed::seed_for_new_user(&mut conn, &payload.user_id);
+    seed::seed_for_new_user(&mut conn, &payload.user_id, use_ai);
+    drop(conn);
+
+    if use_ai {
+        let api_key = state.deepseek_api_key.clone().unwrap();
+        let new_user_id = payload.user_id.clone();
+        let bot_ids = bot_ai::bot_user_ids();
+        for bot_id in bot_ids {
+            if let Some(persona) = bot_ai::persona_for_bot_id(&bot_id) {
+                let state_c = state.clone();
+                let api_key_c = api_key.clone();
+                let bot_id_c = bot_id.clone();
+                let user_id_c = new_user_id.clone();
+                tokio::spawn(async move {
+                    let text = bot_ai::generate_welcome(
+                        &state_c.http_client,
+                        &api_key_c,
+                        persona,
+                    )
+                    .await;
+                    let text = match text {
+                        Some(t) => t,
+                        None => {
+                            warn!(bot_id = %bot_id_c, "deepseek welcome generation failed, skipping");
+                            return;
+                        }
+                    };
+                    let sent_at = chrono::Utc::now().timestamp();
+                    let dm_id = format!("ai:{bot_id_c}:{user_id_c}:welcome");
+                    let payload_hex = hex::encode(text.as_bytes());
+                    let msg = NewPendingMessage {
+                        id: &dm_id,
+                        recipient_id: &user_id_c,
+                        sender_id: &bot_id_c,
+                        payload_hex: &payload_hex,
+                        nonce_hex: "000000000000000000000000",
+                        msg_type: "dm",
+                        sent_at: sent_at + 2,
+                    };
+                    match state_c.pool.get() {
+                        Ok(mut conn) => {
+                            if let Err(e) = repository::enqueue_message(&mut conn, &msg) {
+                                warn!(msg_id = %dm_id, error = %e, "ai welcome enqueue failed");
+                            } else {
+                                let envelope = ServerEnvelope::Message {
+                                    id: dm_id,
+                                    sender_id: bot_id_c.clone(),
+                                    payload_hex,
+                                    nonce_hex: "000000000000000000000000".to_string(),
+                                    msg_type: "dm".to_string(),
+                                    sent_at: sent_at + 2,
+                                };
+                                state_c.send_to_online(&user_id_c, envelope);
+                                info!(bot_id = %bot_id_c, user_id = %user_id_c, "ai welcome sent");
+                            }
+                        }
+                        Err(e) => warn!(error = %e, "ai welcome: db pool acquire failed"),
+                    }
+                });
+            }
+        }
+    }
+
     info!(user_id = %payload.user_id, "user registered");
     Ok(StatusCode::CREATED)
 }
@@ -150,6 +214,7 @@ pub async fn post_message(
     };
     let mut conn = state.pool.get().map_err(db_error)?;
     repository::enqueue_message(&mut conn, &msg).map_err(db_error)?;
+    drop(conn);
 
     if state.send_to_online(&payload.recipient_id, envelope) {
         let ack = ServerEnvelope::DeliveredAck {
@@ -168,6 +233,90 @@ pub async fn post_message(
             "message queued for offline recipient"
         );
     }
+
+    // If the recipient is a bot and DeepSeek is configured, generate a reply.
+    if payload.msg_type == "dm"
+        && bot_ai::is_bot_id(&payload.recipient_id)
+        && state.deepseek_api_key.is_some()
+    {
+        if let Some(persona) = bot_ai::persona_for_bot_id(&payload.recipient_id) {
+            let decoded_text = hex::decode(&payload.payload_hex)
+                .ok()
+                .and_then(|b| String::from_utf8(b).ok());
+
+            if let Some(user_text) = decoded_text {
+                let bot_id = payload.recipient_id.clone();
+                let user_id = sender_id.clone();
+
+                // Append the incoming user message to history, then snapshot for the task.
+                let history_snapshot = {
+                    let mut guard = state.conversation_history.write().unwrap();
+                    let history = guard.entry((bot_id.clone(), user_id.clone())).or_default();
+                    history.push(ChatMessage { role: "user", content: user_text });
+                    history.clone()
+                };
+
+                let state_c = state.clone();
+                let api_key = state.deepseek_api_key.clone().unwrap();
+                tokio::spawn(async move {
+                    let reply = bot_ai::generate_reply(
+                        &state_c.http_client,
+                        &api_key,
+                        persona,
+                        &history_snapshot,
+                    )
+                    .await;
+                    let reply = match reply {
+                        Some(r) => r,
+                        None => {
+                            warn!(bot_id = %bot_id, "deepseek reply generation failed");
+                            return;
+                        }
+                    };
+
+                    // Append the assistant reply to history.
+                    {
+                        let mut guard = state_c.conversation_history.write().unwrap();
+                        let history = guard.entry((bot_id.clone(), user_id.clone())).or_default();
+                        history.push(ChatMessage { role: "assistant", content: reply.clone() });
+                    }
+
+                    let sent_at = chrono::Utc::now().timestamp();
+                    let reply_id = format!("ai:reply:{}:{}", bot_id, Uuid::new_v4());
+                    let payload_hex = hex::encode(reply.as_bytes());
+                    let reply_msg = NewPendingMessage {
+                        id: &reply_id,
+                        recipient_id: &user_id,
+                        sender_id: &bot_id,
+                        payload_hex: &payload_hex,
+                        nonce_hex: "000000000000000000000000",
+                        msg_type: "dm",
+                        sent_at,
+                    };
+                    match state_c.pool.get() {
+                        Ok(mut conn) => {
+                            if let Err(e) = repository::enqueue_message(&mut conn, &reply_msg) {
+                                warn!(reply_id = %reply_id, error = %e, "ai reply enqueue failed");
+                            } else {
+                                let envelope = ServerEnvelope::Message {
+                                    id: reply_id,
+                                    sender_id: bot_id.clone(),
+                                    payload_hex,
+                                    nonce_hex: "000000000000000000000000".to_string(),
+                                    msg_type: "dm".to_string(),
+                                    sent_at,
+                                };
+                                state_c.send_to_online(&user_id, envelope);
+                                info!(bot_id = %bot_id, user_id = %user_id, "ai reply sent");
+                            }
+                        }
+                        Err(e) => warn!(error = %e, "ai reply: db pool acquire failed"),
+                    }
+                });
+            }
+        }
+    }
+
     Ok(StatusCode::ACCEPTED)
 }
 

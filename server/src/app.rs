@@ -6,9 +6,10 @@ use axum::http::Method;
 use axum::routing::{delete, get, post};
 use tokio::sync::mpsc;
 use tower_http::cors::{Any, CorsLayer};
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use crate::api;
+use crate::bot_ai::ChatMessage;
 use crate::db::{DbPool, establish_pool, run_migrations};
 use crate::seed;
 use crate::wire::ServerEnvelope;
@@ -18,14 +19,26 @@ pub struct AppState {
     pub pool: DbPool,
     pub sessions: Arc<RwLock<HashMap<String, String>>>,
     pub online: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<ServerEnvelope>>>>,
+    pub deepseek_api_key: Option<Arc<String>>,
+    pub http_client: Arc<reqwest::Client>,
+    /// Keyed by (bot_id, user_id). Holds the alternating user/assistant turns for each
+    /// conversation so bots can reply with awareness of prior messages.
+    pub conversation_history: Arc<RwLock<HashMap<(String, String), Vec<ChatMessage>>>>,
 }
 
 impl AppState {
     pub fn new(pool: DbPool) -> Self {
+        let deepseek_api_key = std::env::var("DEEPSEEK_API_KEY").ok().map(|k| {
+            info!("DEEPSEEK_API_KEY found — bots will use DeepSeek for replies");
+            Arc::new(k)
+        });
         Self {
             pool,
             sessions: Arc::new(RwLock::new(HashMap::new())),
             online: Arc::new(RwLock::new(HashMap::new())),
+            deepseek_api_key,
+            http_client: Arc::new(reqwest::Client::new()),
+            conversation_history: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 

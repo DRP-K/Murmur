@@ -115,9 +115,11 @@ pub fn seed_bots(conn: &mut SqliteConnection) {
     }
 }
 
-/// Seed a freshly registered user: add bot friends, deliver their posts, send welcome messages.
+/// Seed a freshly registered user: add bot friends, deliver their posts, and optionally send
+/// static welcome DMs.  Pass `skip_welcome = true` when the caller will generate AI welcomes
+/// instead, so users don't receive both a static and an AI message.
 /// All errors are logged and swallowed — seeding must never fail a registration request.
-pub fn seed_for_new_user(conn: &mut SqliteConnection, new_user_id: &str) {
+pub fn seed_for_new_user(conn: &mut SqliteConnection, new_user_id: &str, skip_welcome: bool) {
     // Skip if user was already seeded (has a friendship with any bot).
     let bot_ids: Vec<(String, String)> = BOTS.iter().map(|b| bot_credentials(b.seed)).collect();
     if let Ok(friends) = repository::list_friends_for_user(conn, new_user_id) {
@@ -184,20 +186,22 @@ pub fn seed_for_new_user(conn: &mut SqliteConnection, new_user_id: &str) {
 
         // dm: welcome text delivered one second later so it always follows the
         // friend_added message in the queue (ordered by sent_at ASC).
-        let welcome = bot.welcomes[hash_str(new_user_id, i) % bot.welcomes.len()];
-        let dm_id = format!("seed:{bot_id}:{new_user_id}:welcome");
-        let dm_payload_hex = hex::encode(welcome.as_bytes());
-        let dm_msg = NewPendingMessage {
-            id: &dm_id,
-            recipient_id: new_user_id,
-            sender_id: bot_id,
-            payload_hex: &dm_payload_hex,
-            nonce_hex: "000000000000000000000000",
-            msg_type: "dm",
-            sent_at: now + 1,
-        };
-        if let Err(e) = repository::enqueue_message(conn, &dm_msg) {
-            warn!(msg_id = %dm_id, error = %e, "seed dm message failed");
+        if !skip_welcome {
+            let welcome = bot.welcomes[hash_str(new_user_id, i) % bot.welcomes.len()];
+            let dm_id = format!("seed:{bot_id}:{new_user_id}:welcome");
+            let dm_payload_hex = hex::encode(welcome.as_bytes());
+            let dm_msg = NewPendingMessage {
+                id: &dm_id,
+                recipient_id: new_user_id,
+                sender_id: bot_id,
+                payload_hex: &dm_payload_hex,
+                nonce_hex: "000000000000000000000000",
+                msg_type: "dm",
+                sent_at: now + 1,
+            };
+            if let Err(e) = repository::enqueue_message(conn, &dm_msg) {
+                warn!(msg_id = %dm_id, error = %e, "seed dm message failed");
+            }
         }
     }
 
@@ -289,7 +293,7 @@ mod tests {
         seed_bots(&mut conn);
         let user_id = register_test_user(&mut conn, 50);
 
-        seed_for_new_user(&mut conn, &user_id);
+        seed_for_new_user(&mut conn, &user_id, false);
 
         let friends =
             repository::list_friends_for_user(&mut conn, &user_id).expect("friends should list");
@@ -367,7 +371,7 @@ mod tests {
         seed_bots(&mut conn);
         let user_id = register_test_user(&mut conn, 51);
 
-        seed_for_new_user(&mut conn, &user_id);
+        seed_for_new_user(&mut conn, &user_id, false);
 
         let messages =
             repository::list_pending_messages(&mut conn, &user_id).expect("messages should list");
@@ -384,7 +388,7 @@ mod tests {
         seed_bots(&mut conn);
         let user_id = register_test_user(&mut conn, 53);
 
-        seed_for_new_user(&mut conn, &user_id);
+        seed_for_new_user(&mut conn, &user_id, false);
 
         let messages =
             repository::list_pending_messages(&mut conn, &user_id).expect("messages should list");
@@ -417,8 +421,8 @@ mod tests {
         seed_bots(&mut conn);
         let user_id = register_test_user(&mut conn, 52);
 
-        seed_for_new_user(&mut conn, &user_id);
-        seed_for_new_user(&mut conn, &user_id); // second call should be a no-op
+        seed_for_new_user(&mut conn, &user_id, false);
+        seed_for_new_user(&mut conn, &user_id, false); // second call should be a no-op
 
         let friends =
             repository::list_friends_for_user(&mut conn, &user_id).expect("friends should list");
@@ -453,7 +457,7 @@ mod tests {
         seed_bots(&mut conn);
         let user_id = register_test_user(&mut conn, 55);
 
-        seed_for_new_user(&mut conn, &user_id);
+        seed_for_new_user(&mut conn, &user_id, false);
 
         let (bot_id, _) = bot_credentials(BOTS[0].seed);
         let post_id = format!("seed:{bot_id}:{user_id}:extra:0");
@@ -468,7 +472,7 @@ mod tests {
             .execute(&mut conn)
             .expect("post metadata should be cleared");
 
-        seed_for_new_user(&mut conn, &user_id);
+        seed_for_new_user(&mut conn, &user_id, false);
 
         let repaired = posts::table
             .filter(posts::id.eq(&post_id))
@@ -499,7 +503,7 @@ mod tests {
         seed_bots(&mut conn);
         let user_id = register_test_user(&mut conn, 60);
 
-        seed_for_new_user(&mut conn, &user_id);
+        seed_for_new_user(&mut conn, &user_id, false);
 
         let messages =
             repository::list_pending_messages(&mut conn, &user_id).expect("messages should list");

@@ -111,12 +111,8 @@ pub async fn register(
                 let bot_id_c = bot_id.clone();
                 let user_id_c = new_user_id.clone();
                 tokio::spawn(async move {
-                    let text = bot_ai::generate_welcome(
-                        &state_c.http_client,
-                        &api_key_c,
-                        persona,
-                    )
-                    .await;
+                    let text =
+                        bot_ai::generate_welcome(&state_c.http_client, &api_key_c, persona).await;
                     let text = match text {
                         Some(t) => t,
                         None => {
@@ -252,7 +248,10 @@ pub async fn post_message(
                 let history_snapshot = {
                     let mut guard = state.conversation_history.write().unwrap();
                     let history = guard.entry((bot_id.clone(), user_id.clone())).or_default();
-                    history.push(ChatMessage { role: "user", content: user_text });
+                    history.push(ChatMessage {
+                        role: "user",
+                        content: user_text,
+                    });
                     history.clone()
                 };
 
@@ -278,7 +277,10 @@ pub async fn post_message(
                     {
                         let mut guard = state_c.conversation_history.write().unwrap();
                         let history = guard.entry((bot_id.clone(), user_id.clone())).or_default();
-                        history.push(ChatMessage { role: "assistant", content: reply.clone() });
+                        history.push(ChatMessage {
+                            role: "assistant",
+                            content: reply.clone(),
+                        });
                     }
 
                     let sent_at = chrono::Utc::now().timestamp();

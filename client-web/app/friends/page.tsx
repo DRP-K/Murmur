@@ -153,7 +153,7 @@ export default function FriendsPage() {
         <button onClick={() => setTab('by-id')} className={tabClass('by-id')}>By ID</button>
       </div>
 
-      <main className="flex flex-1 flex-col items-center px-4 py-8">
+      <main className="flex flex-1 flex-col items-center px-4 py-8 pb-16">
         {tab === 'my-qr' && (
           <>
             <p className="mb-6 text-xs text-zinc-400">Show this to your friend:</p>

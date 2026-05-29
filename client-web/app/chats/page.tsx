@@ -202,7 +202,7 @@ function ChatListPage() {
         <h1 className="text-base font-semibold text-zinc-800 dark:text-zinc-100">Chats</h1>
       </header>
 
-      <main className="flex flex-1 flex-col gap-2 p-4">
+      <main className="flex flex-1 flex-col gap-2 p-4 pb-16">
         {empty ? (
           <p className="pt-16 text-center text-sm text-zinc-400">No messages or friends yet.</p>
         ) : (

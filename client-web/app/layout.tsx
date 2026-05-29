@@ -36,7 +36,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-full flex flex-col bg-zinc-50 [overflow-y:scroll] pb-16">
+      <body className="min-h-full flex flex-col bg-zinc-50 [overflow-y:scroll]">
         <BootstrapShell>{children}</BootstrapShell>
       </body>
     </html>

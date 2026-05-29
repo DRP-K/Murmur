@@ -92,7 +92,7 @@ export default function MePage() {
         <h1 className="text-base font-semibold text-zinc-800 dark:text-zinc-100">Me</h1>
       </header>
 
-      <main className="flex flex-1 flex-col gap-6 p-4">
+      <main className="flex flex-1 flex-col gap-6 p-4 pb-16">
         {/* Avatar + display name */}
         <div className="flex items-center gap-4">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-200 text-xl font-bold text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">

@@ -168,7 +168,7 @@ export default function FeedPage() {
         </div>
       </header>
 
-      <main className="flex flex-1 flex-col gap-3 p-4">
+      <main className="flex flex-1 flex-col gap-3 p-4 pb-16">
         {visiblePosts.length === 0 ? (
           <p className="pt-16 text-center text-sm text-zinc-400">
             No posts yet. Be the first to share something.

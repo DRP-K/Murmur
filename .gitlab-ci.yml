@@ -7,9 +7,7 @@ include:
 stages:
   - build
   - test
-  - package
   - deploy
-  - secret-detection
 
 variables:
   SECRET_DETECTION_ENABLED: "true"
@@ -50,24 +48,8 @@ test-server:
     - cd server
     - cargo test
 
-package-staged-image:
-  stage: package
-  needs:
-    - test-server
-  script:
-    - docker compose -f compose.staged.yml build
-
-package-tsuru-image:
-  stage: package
-  needs:
-    - test-server
-  script:
-    - docker build -f Dockerfile.tsuru -t "$TSURU_IMAGE" .
-
 deploy-staged:
   stage: deploy
-  needs:
-    - package-staged-image
   when: manual
   environment:
     name: staged
@@ -78,8 +60,6 @@ deploy-staged:
 
 deploy-production:
   stage: deploy
-  needs:
-    - package-tsuru-image
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
       when: manual
@@ -146,7 +126,6 @@ deploy-pages:
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
       when: manual
-    - when: never
   environment:
     name: cloudflare-pages
     url: https://murmur.pages.dev
@@ -163,35 +142,12 @@ deploy-pages-preview:
   rules:
     - if: '$CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
       when: manual
-    - when: never
   environment:
     name: cloudflare-pages-preview/$CI_COMMIT_REF_SLUG
     url: https://murmur-dev-server.pages.dev
-    on_stop: stop-pages-preview
   before_script:
     - test -n "$CLOUDFLARE_API_TOKEN"
     - test -n "$CLOUDFLARE_ACCOUNT_ID"
   script:
     - npx wrangler pages deploy client-web/dist-staged --project-name murmur --branch "$CI_COMMIT_REF_SLUG"
 
-stop-pages-preview:
-  stage: deploy
-  image: node:22-alpine
-  needs: []
-  rules:
-    - if: '$CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH'
-      when: manual
-    - when: never
-  environment:
-    name: cloudflare-pages-preview/$CI_COMMIT_REF_SLUG
-    action: stop
-  before_script:
-    - test -n "$CLOUDFLARE_API_TOKEN"
-    - test -n "$CLOUDFLARE_ACCOUNT_ID"
-  script:
-    - npx wrangler pages deployment delete --project-name murmur --branch "$CI_COMMIT_REF_SLUG" || true
-sast:
-  stage: test
-
-secret_detection:
-  stage: secret-detection

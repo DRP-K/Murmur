@@ -48,8 +48,9 @@ fn app() -> axum::Router {
         .into_temp_path()
         .keep()
         .expect("temp db path should persist");
-    let state = AppState::from_database_url(path.to_str().expect("temp path should be utf8"))
-        .expect("app state should initialize");
+    let state =
+        AppState::from_database_url_without_ai(path.to_str().expect("temp path should be utf8"))
+            .expect("app state should initialize");
 
     router(state)
 }

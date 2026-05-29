@@ -29,6 +29,18 @@ variables:
       - .cargo/git/
       - server/target/
 
+workflow:
+  rules:
+    # Always allow MR pipelines
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+    # Block branch(push) pipeline if this branch already has an open MR
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS && $CI_PIPELINE_SOURCE == "push"'
+      when: never
+
+    # Allow normal branch pipelines when no MR is open
+    - if: '$CI_COMMIT_BRANCH'
+
 fmt-check:
   stage: test
   extends: .cargo-cache

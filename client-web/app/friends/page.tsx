@@ -10,7 +10,6 @@ import { addFriend } from '@/lib/relay'
 import { db } from '@/lib/db'
 import { QrScanner } from '@/components/QrScanner'
 import { FriendSetupModal } from '@/components/FriendSetupModal'
-import { TabBar } from '@/components/TabBar'
 import type { QrPayload } from '@/lib/types'
 
 type Tab = 'my-qr' | 'scan' | 'by-id'
@@ -153,7 +152,7 @@ export default function FriendsPage() {
         <button onClick={() => setTab('by-id')} className={tabClass('by-id')}>By ID</button>
       </div>
 
-      <main className="flex flex-1 flex-col items-center px-4 py-8 pb-16">
+      <main className="flex flex-1 flex-col items-center px-4 py-8">
         {tab === 'my-qr' && (
           <>
             <p className="mb-6 text-xs text-zinc-400">Show this to your friend:</p>
@@ -224,8 +223,6 @@ export default function FriendsPage() {
           </form>
         )}
       </main>
-
-      <TabBar />
 
       {setupFriend && (
         <FriendSetupModal

@@ -1,12 +1,11 @@
 'use client'
 
 import { usePathname, useRouter } from 'next/navigation'
-import { Newspaper, MessageCircle, Users, User } from 'lucide-react'
+import { Newspaper, MessageCircle, User } from 'lucide-react'
 
 const tabs = [
   { label: 'Feed', path: '/feed', icon: Newspaper },
   { label: 'Chats', path: '/chats', icon: MessageCircle },
-  { label: 'Friends', path: '/friends', icon: Users },
   { label: 'Me', path: '/me', icon: User },
 ] as const
 

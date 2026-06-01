@@ -72,7 +72,7 @@ export function QrScanner({ onScan, onError }: Props) {
       {!scanning ? (
         <button
           onClick={startScanning}
-          className="flex items-center gap-2 rounded-full bg-zinc-900 px-6 py-2.5 text-sm font-medium text-white dark:bg-white dark:text-zinc-900"
+          className="flex items-center gap-2 rounded-full bg-zinc-900 px-6 py-2.5 text-sm font-medium text-white"
         >
           <Camera size={16} />
           Start scanning
@@ -80,7 +80,7 @@ export function QrScanner({ onScan, onError }: Props) {
       ) : (
         <button
           onClick={stopScanning}
-          className="flex items-center gap-2 rounded-full border border-zinc-200 px-6 py-2.5 text-sm text-zinc-600 dark:border-zinc-700 dark:text-zinc-300"
+          className="flex items-center gap-2 rounded-full border border-zinc-200 px-6 py-2.5 text-sm text-zinc-600"
         >
           <CameraOff size={16} />
           Stop scanning

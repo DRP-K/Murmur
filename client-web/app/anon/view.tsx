@@ -220,12 +220,12 @@ export default function AnonThreadPage() {
   return (
     <>
       {/* Header */}
-      <header className="flex items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
+      <header className="flex items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur">
         <button onClick={() => router.back()} className="text-zinc-500 hover:text-zinc-800">
           <ArrowLeft size={20} />
         </button>
         <div className="flex-1">
-          <p className="text-sm font-medium text-zinc-800 dark:text-zinc-100">Anonymous thread</p>
+          <p className="text-sm font-medium text-zinc-800">Anonymous thread</p>
           {thread?.postSnippet && (
             <p className="truncate text-xs text-zinc-400">re: &quot;{thread.postSnippet}&quot;</p>
           )}
@@ -236,7 +236,7 @@ export default function AnonThreadPage() {
       </header>
 
       {/* Identity notice */}
-      <div className="border-b border-zinc-100 bg-zinc-50 px-4 py-2 text-center text-xs text-zinc-400 dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="border-b border-zinc-100 bg-zinc-50 px-4 py-2 text-center text-xs text-zinc-400">
         — both identities hidden —
       </div>
 
@@ -256,7 +256,7 @@ export default function AnonThreadPage() {
           <div className="mx-auto mt-2">
             <button
               onClick={handleReveal}
-              className="rounded-full border border-zinc-200 px-4 py-1.5 text-xs text-zinc-500 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-400"
+              className="rounded-full border border-zinc-200 px-4 py-1.5 text-xs text-zinc-500 hover:border-zinc-400"
             >
               Reveal your name?
             </button>
@@ -272,7 +272,7 @@ export default function AnonThreadPage() {
       {/* Input */}
       <form
         onSubmit={handleSend}
-        className="flex items-end gap-2 border-t border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
+        className="flex items-end gap-2 border-t border-zinc-200 bg-white p-4"
       >
         <textarea
           value={input}
@@ -282,12 +282,12 @@ export default function AnonThreadPage() {
           }}
           placeholder="Type a message…"
           rows={1}
-          className="flex-1 resize-none rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm placeholder-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          className="flex-1 resize-none rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm placeholder-zinc-400 focus:border-zinc-400 focus:outline-none"
         />
         <button
           type="submit"
           disabled={sending || !input.trim()}
-          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white disabled:opacity-40 dark:bg-white dark:text-zinc-900"
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white disabled:opacity-40"
         >
           <Send size={16} />
         </button>

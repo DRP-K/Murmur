@@ -85,7 +85,7 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
-      <div className="w-full max-w-md rounded-t-2xl bg-white p-6 shadow-xl dark:bg-zinc-900 sm:rounded-2xl">
+      <div className="w-full max-w-md rounded-t-2xl bg-white p-6 shadow-xl sm:rounded-2xl">
         <div className="mb-4 flex items-center justify-between">
           <span className="text-sm font-semibold text-zinc-500">New anonymous post</span>
           <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600">
@@ -102,7 +102,7 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
               placeholder="What's on your mind?"
               rows={4}
               maxLength={500}
-              className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 pr-10 text-sm text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+              className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 pr-10 text-sm text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none"
             />
             <button
               type="button"
@@ -110,8 +110,8 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
               title="Get inspired"
               className={`absolute right-2 top-2 rounded-lg p-1.5 transition-colors ${
                 showSuggestions
-                  ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
-                  : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'
+                  ? 'bg-zinc-900 text-white'
+                  : 'text-zinc-400 hover:text-zinc-600'
               }`}
             >
               <Sparkles size={15} />
@@ -119,7 +119,7 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
           </div>
 
           {mediaRefName && (
-            <div className="flex items-center gap-2 rounded-lg bg-zinc-100 px-3 py-1.5 text-xs dark:bg-zinc-800">
+            <div className="flex items-center gap-2 rounded-lg bg-zinc-100 px-3 py-1.5 text-xs">
               <span>{CATEGORY_EMOJI[mediaCategory ?? ''] ?? ''} {mediaRefName}</span>
               <button
                 type="button"
@@ -145,11 +145,11 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-zinc-400 dark:text-zinc-500">Expires:</span>
+              <span className="text-xs text-zinc-400">Expires:</span>
               <select
                 value={expirySeconds ?? ''}
                 onChange={(e) => setExpirySeconds(e.target.value ? Number(e.target.value) : null)}
-                className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-600 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-600 focus:outline-none"
               >
                 {EXPIRY_OPTIONS.map((o) => (
                   <option key={String(o.value)} value={o.value ?? ''}>
@@ -167,7 +167,7 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
           <button
             type="submit"
             disabled={sending || !content.trim()}
-            className="flex items-center justify-center gap-2 rounded-full bg-zinc-900 px-6 py-2.5 text-sm font-medium text-white transition-opacity disabled:opacity-40 dark:bg-white dark:text-zinc-900"
+            className="flex items-center justify-center gap-2 rounded-full bg-zinc-900 px-6 py-2.5 text-sm font-medium text-white transition-opacity disabled:opacity-40"
           >
             <Send size={14} />
             {sending ? 'Posting…' : 'Post'}

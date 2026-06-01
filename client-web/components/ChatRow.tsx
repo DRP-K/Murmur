@@ -21,16 +21,16 @@ export function ChatRow({ name, metAtEvent, preview, timestamp, unread, isAnon, 
   return (
     <button
       onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-xl bg-white px-4 py-3 text-left shadow-sm transition-colors hover:bg-zinc-50 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+      className="flex w-full items-center gap-3 rounded-xl bg-white px-4 py-3 text-left shadow-sm transition-colors hover:bg-zinc-50"
     >
-      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100 text-sm font-semibold text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
+      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100 text-sm font-semibold text-zinc-600">
         {isAnon ? '?' : name.charAt(0).toUpperCase()}
       </div>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
           <div className="flex min-w-0 items-baseline gap-1.5">
-            <span className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">
+            <span className="truncate text-sm font-medium text-zinc-800">
               {name}
             </span>
             {!!metAtEvent && !isAnon && (
@@ -43,7 +43,7 @@ export function ChatRow({ name, metAtEvent, preview, timestamp, unread, isAnon, 
       </div>
 
       {!!unread && (
-        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-zinc-900 px-1.5 text-[10px] font-semibold text-white dark:bg-white dark:text-zinc-900">
+        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-zinc-900 px-1.5 text-[10px] font-semibold text-white">
           {unread > 99 ? '99+' : unread}
         </span>
       )}

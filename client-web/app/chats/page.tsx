@@ -199,13 +199,13 @@ function ChatListPage() {
 
   return (
     <>
-      <header className="sticky top-0 z-10 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
+      <header className="sticky top-0 z-10 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur">
         <div className="flex items-center justify-between">
-          <h1 className="text-base font-semibold text-zinc-800 dark:text-zinc-100">Chats</h1>
+          <h1 className="text-base font-semibold text-zinc-800">Chats</h1>
           <button
             onClick={() => router.push('/friends')}
             aria-label="Add friend"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 text-zinc-600 transition-colors hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:text-zinc-100"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 text-zinc-600 transition-colors hover:border-zinc-300 hover:text-zinc-900"
           >
             <Plus size={16} />
           </button>

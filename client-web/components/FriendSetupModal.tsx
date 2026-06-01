@@ -25,9 +25,9 @@ export function FriendSetupModal({ friendId, initialNickname, initialMetAtEvent,
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
-      <div className="w-full max-w-sm rounded-t-2xl bg-white p-6 shadow-xl dark:bg-zinc-900 sm:rounded-2xl">
+      <div className="w-full max-w-sm rounded-t-2xl bg-white p-6 shadow-xl sm:rounded-2xl">
         <div className="mb-4 flex items-start justify-between gap-2">
-          <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">Friend added!</h2>
+          <h2 className="text-sm font-semibold text-zinc-800">Friend added!</h2>
           <button onClick={onDone} className="mt-0.5 text-zinc-400 hover:text-zinc-600">
             <X size={16} />
           </button>
@@ -49,7 +49,7 @@ export function FriendSetupModal({ friendId, initialNickname, initialMetAtEvent,
               onKeyDown={(e) => e.key === 'Enter' && handleDone()}
               placeholder="e.g. Alice"
               maxLength={40}
-              className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+              className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none"
             />
           </div>
 
@@ -62,7 +62,7 @@ export function FriendSetupModal({ friendId, initialNickname, initialMetAtEvent,
               onChange={(e) => setMetAtEvent(e.target.value)}
               placeholder="e.g. JSConf 2026"
               maxLength={80}
-              className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+              className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none"
             />
           </div>
 
@@ -76,7 +76,7 @@ export function FriendSetupModal({ friendId, initialNickname, initialMetAtEvent,
           <button
             type="button"
             onClick={handleDone}
-            className="flex w-full items-center justify-center gap-2 rounded-full bg-zinc-900 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-zinc-900"
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-zinc-900 py-2.5 text-sm font-medium text-white hover:bg-zinc-800"
           >
             <UserCheck size={15} />
             Done

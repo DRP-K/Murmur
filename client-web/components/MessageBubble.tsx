@@ -19,8 +19,8 @@ export function MessageBubble({ content, sentAt, isOwn, status }: Props) {
       <div
         className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
           isOwn
-            ? 'rounded-br-sm bg-zinc-900 text-white dark:bg-white dark:text-zinc-900'
-            : 'rounded-bl-sm bg-white text-zinc-800 shadow-sm dark:bg-zinc-800 dark:text-zinc-100'
+            ? 'rounded-br-sm bg-zinc-900 text-white'
+            : 'rounded-bl-sm bg-white text-zinc-800 shadow-sm'
         }`}
       >
         <p>{content}</p>

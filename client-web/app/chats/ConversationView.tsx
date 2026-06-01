@@ -176,20 +176,20 @@ export default function ConversationPage() {
 
   return (
     <>
-      <header className="flex items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
+      <header className="flex items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur">
         <button onClick={() => router.back()} className="text-zinc-500 hover:text-zinc-800">
           <ArrowLeft size={20} />
         </button>
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-600">
           {displayName.charAt(0).toUpperCase()}
         </div>
         <div className="flex-1">
-          <p className="text-sm font-medium text-zinc-800 dark:text-zinc-100">{displayName}</p>
+          <p className="text-sm font-medium text-zinc-800">{displayName}</p>
           {metAtEvent && (
             <p className="text-xs text-zinc-400">{metAtEvent}</p>
           )}
         </div>
-        <button onClick={openMenu} className="text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200">
+        <button onClick={openMenu} className="text-zinc-500 hover:text-zinc-800">
           <MoreVertical size={20} />
         </button>
       </header>
@@ -197,7 +197,7 @@ export default function ConversationPage() {
       {menuOpen && friendId && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" onClick={() => setMenuOpen(false)}>
           <div
-            className="w-full max-w-md rounded-t-2xl bg-white p-6 shadow-xl dark:bg-zinc-900 sm:rounded-2xl"
+            className="w-full max-w-md rounded-t-2xl bg-white p-6 shadow-xl sm:rounded-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
@@ -213,19 +213,19 @@ export default function ConversationPage() {
               <div className="flex flex-col gap-1">
                 <button
                   onClick={() => { setNicknameInput(friendName ?? ''); setMenuSection('nickname') }}
-                  className="rounded-xl px-4 py-3 text-left text-sm text-zinc-800 hover:bg-zinc-100 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                  className="rounded-xl px-4 py-3 text-left text-sm text-zinc-800 hover:bg-zinc-100"
                 >
                   Edit nickname
                 </button>
                 <button
                   onClick={() => setMenuSection('tags')}
-                  className="rounded-xl px-4 py-3 text-left text-sm text-zinc-800 hover:bg-zinc-100 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                  className="rounded-xl px-4 py-3 text-left text-sm text-zinc-800 hover:bg-zinc-100"
                 >
                   Manage tags
                 </button>
                 <button
                   onClick={toggleBlock}
-                  className="rounded-xl px-4 py-3 text-left text-sm text-red-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  className="rounded-xl px-4 py-3 text-left text-sm text-red-500 hover:bg-zinc-100"
                 >
                   {blocked ? 'Unblock' : 'Block'}
                 </button>
@@ -239,12 +239,12 @@ export default function ConversationPage() {
                   value={nicknameInput}
                   onChange={(e) => setNicknameInput(e.target.value)}
                   placeholder="Nickname (leave blank to clear)"
-                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none"
                   onKeyDown={(e) => { if (e.key === 'Enter') saveNickname() }}
                 />
                 <button
                   onClick={saveNickname}
-                  className="rounded-full bg-zinc-900 px-6 py-2.5 text-sm font-medium text-white dark:bg-white dark:text-zinc-900"
+                  className="rounded-full bg-zinc-900 px-6 py-2.5 text-sm font-medium text-white"
                 >
                   Save
                 </button>
@@ -273,7 +273,7 @@ export default function ConversationPage() {
 
       <form
         onSubmit={handleSend}
-        className="flex items-end gap-2 border-t border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
+        className="flex items-end gap-2 border-t border-zinc-200 bg-white p-4"
       >
         <textarea
           value={input}
@@ -283,12 +283,12 @@ export default function ConversationPage() {
           }}
           placeholder="Type a message…"
           rows={1}
-          className="flex-1 resize-none rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          className="flex-1 resize-none rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none"
         />
         <button
           type="submit"
           disabled={sending || !input.trim()}
-          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition-opacity disabled:opacity-40 dark:bg-white dark:text-zinc-900"
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition-opacity disabled:opacity-40"
         >
           <Send size={16} />
         </button>

@@ -167,7 +167,7 @@ export function PostSuggestions({ onSelect }: Props) {
   }
 
   return (
-    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800/50">
+    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
       <div className="mb-2.5 relative">
         <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
         <input
@@ -175,7 +175,7 @@ export function PostSuggestions({ onSelect }: Props) {
           value={query}
           onChange={(e) => handleSearch(e.target.value)}
           placeholder={`Search ${tab}…`}
-          className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 pl-7 pr-3 text-xs text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-100"
+          className="w-full rounded-lg border border-zinc-200 bg-white py-1.5 pl-7 pr-3 text-xs text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none"
         />
       </div>
 
@@ -187,8 +187,8 @@ export function PostSuggestions({ onSelect }: Props) {
             onClick={() => setTab(t.key)}
             className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
               tab === t.key
-                ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
-                : 'bg-white text-zinc-600 hover:bg-zinc-100 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600'
+                ? 'bg-zinc-900 text-white'
+                : 'bg-white text-zinc-600 hover:bg-zinc-100'
             }`}
           >
             {t.label}
@@ -201,7 +201,7 @@ export function PostSuggestions({ onSelect }: Props) {
           {Array.from({ length: 5 }).map((_, i) => (
             <div
               key={i}
-              className="flex-shrink-0 w-20 h-28 rounded-lg bg-zinc-200 animate-pulse dark:bg-zinc-700"
+              className="flex-shrink-0 w-20 h-28 rounded-lg bg-zinc-200 animate-pulse"
             />
           ))}
         </div>
@@ -225,7 +225,7 @@ export function PostSuggestions({ onSelect }: Props) {
                     : (item as GameItem).name
                   onSelect({ text: buildTemplate(tab, item), category: tab, mediaRefName, imageUrl: itemImage(tab, item) })
                 }}
-                className="flex-shrink-0 w-20 rounded-lg overflow-hidden border border-zinc-200 bg-white hover:border-zinc-400 transition-colors dark:border-zinc-600 dark:bg-zinc-700 dark:hover:border-zinc-400 text-left"
+                className="flex-shrink-0 w-20 rounded-lg overflow-hidden border border-zinc-200 bg-white hover:border-zinc-400 transition-colors text-left"
               >
                 {img ? (
                   <img
@@ -235,12 +235,12 @@ export function PostSuggestions({ onSelect }: Props) {
                     loading="lazy"
                   />
                 ) : (
-                  <div className="w-full h-28 bg-zinc-200 dark:bg-zinc-600 flex items-center justify-center text-zinc-400 text-xs">
+                  <div className="w-full h-28 bg-zinc-200 flex items-center justify-center text-zinc-400 text-xs">
                     No art
                   </div>
                 )}
                 <div className="p-1.5">
-                  <p className="text-[10px] text-zinc-700 dark:text-zinc-200 leading-tight line-clamp-2">
+                  <p className="text-[10px] text-zinc-700 leading-tight line-clamp-2">
                     {label}
                   </p>
                 </div>

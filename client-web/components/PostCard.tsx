@@ -62,7 +62,23 @@ export function PostCard({ post, liked, resonated, onToggleLike, onToggleResonat
           <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">{post.media_ref_name}</p>
         )}
 
-        {!post.media_ref_name && <div className="mb-4" />}
+        {post.attachment_url && post.attachment_type === 'image' && (
+          <img
+            src={post.attachment_url}
+            alt=""
+            className="mb-3 max-h-64 w-full rounded-lg object-contain"
+          />
+        )}
+
+        {post.attachment_url && post.attachment_type === 'video' && (
+          <video
+            src={post.attachment_url}
+            controls
+            className="mb-3 max-h-64 w-full rounded-lg bg-black"
+          />
+        )}
+
+        {!post.media_ref_name && !post.attachment_url && <div className="mb-4" />}
 
         <div className="flex items-center gap-4">
           <button

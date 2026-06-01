@@ -38,6 +38,8 @@ diesel::table! {
         category -> Nullable<Text>,
         media_ref_name -> Nullable<Text>,
         image_url -> Nullable<Text>,
+        attachment_url -> Nullable<Text>,
+        attachment_type -> Nullable<Text>,
     }
 }
 

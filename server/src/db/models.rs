@@ -54,6 +54,8 @@ pub struct Post {
     pub category: Option<String>,
     pub media_ref_name: Option<String>,
     pub image_url: Option<String>,
+    pub attachment_url: Option<String>,
+    pub attachment_type: Option<String>,
 }
 
 #[derive(Debug, Insertable)]
@@ -67,6 +69,8 @@ pub struct NewPost<'a> {
     pub category: Option<&'a str>,
     pub media_ref_name: Option<&'a str>,
     pub image_url: Option<&'a str>,
+    pub attachment_url: Option<&'a str>,
+    pub attachment_type: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Queryable, Selectable, Identifiable, PartialEq, Eq)]

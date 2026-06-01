@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use axum::Json;
+use axum::extract::Multipart;
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{Path, Query, State, WebSocketUpgrade};
 use axum::http::{HeaderMap, StatusCode};
@@ -20,8 +21,8 @@ use crate::db::repository;
 use crate::seed;
 use crate::wire::{
     AckPostRequest, AddFriendRequest, AuthRequest, AuthResponse, CreatePostRequest, FriendInfo,
-    FriendListResponse, MessageListResponse, PostListResponse, RegisterRequest, SendMessageRequest,
-    ServerEnvelope,
+    FriendListResponse, MediaUploadResponse, MessageListResponse, PostListResponse,
+    RegisterRequest, SendMessageRequest, ServerEnvelope,
 };
 
 #[derive(Debug)]
@@ -378,13 +379,19 @@ pub async fn post_post(
         category: payload.category.as_deref(),
         media_ref_name: payload.media_ref_name.as_deref(),
         image_url: payload.image_url.as_deref(),
+        attachment_url: payload.attachment_url.as_deref(),
+        attachment_type: payload.attachment_type.as_deref(),
     };
     let recipient_refs: Vec<&str> = payload.recipient_ids.iter().map(String::as_str).collect();
 
     {
         let mut conn = state.pool.get().map_err(db_error)?;
-        repository::create_post_with_deliveries(&mut conn, &post, &recipient_refs)
-            .map_err(db_error)?;
+        repository::create_post_with_deliveries(&mut conn, &post, &recipient_refs).map_err(
+            |e| {
+                error!(post_id = %payload.id, error = %e, "db insert failed for post");
+                db_error(e)
+            },
+        )?;
     }
 
     let envelope = ServerEnvelope::Post {
@@ -396,6 +403,8 @@ pub async fn post_post(
         category: payload.category,
         media_ref_name: payload.media_ref_name,
         image_url: payload.image_url,
+        attachment_url: payload.attachment_url,
+        attachment_type: payload.attachment_type,
     };
 
     for recipient_id in payload.recipient_ids {
@@ -537,6 +546,130 @@ pub async fn get_friends(
         .collect();
     debug!(user_id = %user_id, count = friends.len(), "friends listed");
     Ok(Json(FriendListResponse { friends }))
+}
+
+pub async fn upload_media(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    mut multipart: Multipart,
+) -> Result<Json<MediaUploadResponse>, ApiError> {
+    let user_id = authed_user(&headers, &state)?;
+    info!(user_id = %user_id, "media upload started");
+
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        warn!(user_id = %user_id, error = %e, "multipart field read failed");
+        ApiError::BadRequest(e.to_string())
+    })? {
+        let field_name = field.name().unwrap_or("").to_string();
+        if field_name != "file" {
+            debug!(user_id = %user_id, field = %field_name, "skipping non-file multipart field");
+            continue;
+        }
+
+        let content_type = field.content_type().unwrap_or("").to_string();
+        debug!(user_id = %user_id, content_type = %content_type, "file field found");
+
+        let (media_type, ext) = match content_type.as_str() {
+            "image/jpeg" => ("image", "jpg"),
+            "image/png" => ("image", "png"),
+            "image/gif" => ("image", "gif"),
+            "image/webp" => ("image", "webp"),
+            "video/mp4" => ("video", "mp4"),
+            "video/webm" => ("video", "webm"),
+            _ => {
+                warn!(user_id = %user_id, content_type = %content_type, "unsupported media type rejected");
+                return Err(ApiError::BadRequest("unsupported media type".into()));
+            }
+        };
+
+        let max_bytes: usize = if media_type == "image" {
+            10 * 1024 * 1024
+        } else {
+            50 * 1024 * 1024
+        };
+
+        let data = field.bytes().await.map_err(|e| {
+            warn!(user_id = %user_id, error = %e, "failed to read file bytes from multipart");
+            ApiError::BadRequest(e.to_string())
+        })?;
+
+        debug!(user_id = %user_id, bytes = data.len(), max_bytes, "file bytes read");
+
+        if data.len() > max_bytes {
+            warn!(user_id = %user_id, bytes = data.len(), max_bytes, "file too large");
+            return Err(ApiError::BadRequest("file too large".into()));
+        }
+
+        let filename = format!("{}.{}", Uuid::new_v4(), ext);
+        let uploads_dir = std::env::var("UPLOADS_DIR").unwrap_or_else(|_| "uploads".into());
+
+        tokio::fs::create_dir_all(&uploads_dir)
+            .await
+            .map_err(|e| {
+                error!(user_id = %user_id, dir = %uploads_dir, error = %e, "failed to create uploads directory");
+                ApiError::Internal(e.to_string())
+            })?;
+
+        tokio::fs::write(
+            std::path::Path::new(&uploads_dir).join(&filename),
+            &data,
+        )
+        .await
+        .map_err(|e| {
+            error!(user_id = %user_id, filename = %filename, error = %e, "failed to write uploaded file");
+            ApiError::Internal(e.to_string())
+        })?;
+
+        info!(user_id = %user_id, filename = %filename, media_type, bytes = data.len(), "media upload complete");
+        let url = format!("/api/media/{}", filename);
+        return Ok(Json(MediaUploadResponse {
+            url,
+            media_type: media_type.to_string(),
+        }));
+    }
+
+    warn!(user_id = %user_id, "upload request had no 'file' field");
+    Err(ApiError::BadRequest("no file field in request".into()))
+}
+
+pub async fn get_media(Path(filename): Path<String>) -> Response {
+    if filename.contains('/') || filename.contains('\\') || filename.starts_with('.') {
+        warn!(filename = %filename, "media request rejected: path traversal attempt");
+        return ApiError::NotFound.into_response();
+    }
+
+    let uploads_dir = std::env::var("UPLOADS_DIR").unwrap_or_else(|_| "uploads".into());
+    let path = std::path::Path::new(&uploads_dir).join(&filename);
+
+    let data = match tokio::fs::read(&path).await {
+        Ok(d) => d,
+        Err(err) => {
+            debug!(filename = %filename, path = %path.display(), error = %err, "media file not found");
+            return ApiError::NotFound.into_response();
+        }
+    };
+
+    let content_type = match path.extension().and_then(|e| e.to_str()) {
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("png") => "image/png",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("mp4") => "video/mp4",
+        Some("webm") => "video/webm",
+        _ => "application/octet-stream",
+    };
+
+    debug!(filename = %filename, content_type, bytes = data.len(), "media served");
+
+    axum::http::Response::builder()
+        .status(StatusCode::OK)
+        .header(axum::http::header::CONTENT_TYPE, content_type)
+        .header(axum::http::header::CONTENT_LENGTH, data.len())
+        .body(axum::body::Body::from(data))
+        .unwrap_or_else(|err| {
+            error!(filename = %filename, error = %err, "media response build failed");
+            ApiError::Internal("response build failed".into()).into_response()
+        })
 }
 
 pub async fn ws_handler(

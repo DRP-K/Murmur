@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use axum::http::Method;
 use axum::routing::{delete, get, post};
 use tokio::sync::mpsc;
@@ -139,6 +140,11 @@ pub fn router(state: AppState) -> Router {
         .route("/api/messages/{id}", delete(api::delete_message))
         .route("/api/posts", post(api::post_post).get(api::get_posts))
         .route("/api/posts/ack", post(api::ack_post))
+        .route(
+            "/api/media",
+            post(api::upload_media).layer(DefaultBodyLimit::max(52 * 1024 * 1024)),
+        )
+        .route("/api/media/{filename}", get(api::get_media))
         .route("/api/friends", get(api::get_friends).post(api::add_friend))
         .route("/api/ws", get(api::ws_handler))
         .layer(cors)

@@ -93,7 +93,7 @@ pub fn create_post_with_deliveries(
             })
             .collect();
 
-        diesel::insert_into(post_deliveries::table)
+        diesel::insert_or_ignore_into(post_deliveries::table)
             .values(&deliveries)
             .execute(conn)
     })
@@ -426,6 +426,8 @@ mod tests {
             category: None,
             image_url: None,
             media_ref_name: None,
+            attachment_url: None,
+            attachment_type: None,
         };
 
         let inserted_deliveries = create_post_with_deliveries(&mut conn, &post, &["u2", "u3"])
@@ -458,6 +460,8 @@ mod tests {
             category: None,
             image_url: None,
             media_ref_name: None,
+            attachment_url: None,
+            attachment_type: None,
         };
         let expired = NewPost {
             id: "expired",
@@ -468,6 +472,8 @@ mod tests {
             category: None,
             image_url: None,
             media_ref_name: None,
+            attachment_url: None,
+            attachment_type: None,
         };
 
         create_post_with_deliveries(&mut conn, &fresh, &["u2"]).expect("fresh fan-out should work");

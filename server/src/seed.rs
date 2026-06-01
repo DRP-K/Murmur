@@ -153,6 +153,8 @@ pub fn seed_for_new_user(conn: &mut SqliteConnection, new_user_id: &str, skip_we
                 category: None,
                 image_url: None,
                 media_ref_name: None,
+                attachment_url: None,
+                attachment_type: None,
             };
             if let Err(e) = repository::create_post_with_deliveries(conn, &post, &[new_user_id]) {
                 warn!(post_id = %post_id, error = %e, "seed post failed");
@@ -228,6 +230,8 @@ fn ensure_extra_posts(
             category: Some(extra.category),
             media_ref_name: Some(extra.media_ref_name),
             image_url: Some(extra.image_url),
+            attachment_url: None,
+            attachment_type: None,
         };
         if let Err(e) = repository::ensure_rich_post_with_delivery(conn, &post, new_user_id) {
             warn!(post_id = %post_id, error = %e, "seed extra post failed");

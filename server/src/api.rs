@@ -21,8 +21,8 @@ use crate::db::repository;
 use crate::seed;
 use crate::wire::{
     AckPostRequest, AddFriendRequest, AuthRequest, AuthResponse, CreatePostRequest, FriendInfo,
-    FriendListResponse, MediaUploadResponse, MessageListResponse, PostListResponse, RegisterRequest,
-    SendMessageRequest, ServerEnvelope,
+    FriendListResponse, MediaUploadResponse, MessageListResponse, PostListResponse,
+    RegisterRequest, SendMessageRequest, ServerEnvelope,
 };
 
 #[derive(Debug)]
@@ -386,11 +386,12 @@ pub async fn post_post(
 
     {
         let mut conn = state.pool.get().map_err(db_error)?;
-        repository::create_post_with_deliveries(&mut conn, &post, &recipient_refs)
-            .map_err(|e| {
+        repository::create_post_with_deliveries(&mut conn, &post, &recipient_refs).map_err(
+            |e| {
                 error!(post_id = %payload.id, error = %e, "db insert failed for post");
                 db_error(e)
-            })?;
+            },
+        )?;
     }
 
     let envelope = ServerEnvelope::Post {
@@ -555,14 +556,10 @@ pub async fn upload_media(
     let user_id = authed_user(&headers, &state)?;
     info!(user_id = %user_id, "media upload started");
 
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| {
-            warn!(user_id = %user_id, error = %e, "multipart field read failed");
-            ApiError::BadRequest(e.to_string())
-        })?
-    {
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        warn!(user_id = %user_id, error = %e, "multipart field read failed");
+        ApiError::BadRequest(e.to_string())
+    })? {
         let field_name = field.name().unwrap_or("").to_string();
         if field_name != "file" {
             debug!(user_id = %user_id, field = %field_name, "skipping non-file multipart field");
@@ -591,13 +588,10 @@ pub async fn upload_media(
             50 * 1024 * 1024
         };
 
-        let data = field
-            .bytes()
-            .await
-            .map_err(|e| {
-                warn!(user_id = %user_id, error = %e, "failed to read file bytes from multipart");
-                ApiError::BadRequest(e.to_string())
-            })?;
+        let data = field.bytes().await.map_err(|e| {
+            warn!(user_id = %user_id, error = %e, "failed to read file bytes from multipart");
+            ApiError::BadRequest(e.to_string())
+        })?;
 
         debug!(user_id = %user_id, bytes = data.len(), max_bytes, "file bytes read");
 

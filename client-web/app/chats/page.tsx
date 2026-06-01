@@ -32,6 +32,20 @@ function makeConversationId(a: string, b: string): string {
   return [a, b].sort().join('-')
 }
 
+function useSplitLayout() {
+  const [split, setSplit] = useState(false)
+
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 768px), (orientation: landscape)')
+    const update = () => setSplit(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+
+  return split
+}
+
 export default function ChatsPage() {
   return (
     <Suspense fallback={<div className="flex flex-1 items-center justify-center text-sm text-zinc-400">Loading…</div>}>
@@ -42,12 +56,42 @@ export default function ChatsPage() {
 
 function ChatsPageContent() {
   const searchParams = useSearchParams()
-  if (searchParams.has('id')) return <ConversationPage />
+  const selectedConversationId = searchParams.get('id')
+  const split = useSplitLayout()
+
+  if (split) {
+    return (
+      <>
+        <div className="ml-20 grid h-dvh min-w-0 grid-cols-[minmax(320px,28vw)_minmax(0,1fr)]">
+          <aside className="flex min-h-0 flex-col border-r border-zinc-200 bg-zinc-50">
+            <ChatListPage pane selectedConversationId={selectedConversationId} />
+          </aside>
+          <section className="flex min-h-0 min-w-0 flex-col bg-zinc-50">
+            {selectedConversationId ? (
+              <ConversationPage conversationId={selectedConversationId} embedded />
+            ) : (
+              <div className="flex flex-1 items-center justify-center px-8 text-center text-sm text-zinc-400">
+                Select a chat to start talking.
+              </div>
+            )}
+          </section>
+        </div>
+        <TabBar sideOnly />
+      </>
+    )
+  }
+
+  if (selectedConversationId) return <ConversationPage />
 
   return <ChatListPage />
 }
 
-function ChatListPage() {
+interface ChatListPageProps {
+  pane?: boolean
+  selectedConversationId?: string | null
+}
+
+function ChatListPage({ pane = false, selectedConversationId = null }: ChatListPageProps = {}) {
   const bootstrapped = useAppStore((s) => s.bootstrapped)
   const bootstrapError = useAppStore((s) => s.bootstrapError)
   const userId = useAppStore((s) => s.userId)
@@ -199,7 +243,7 @@ function ChatListPage() {
 
   return (
     <>
-      <header className="sticky top-0 z-10 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur">
+      <header className={`${pane ? '' : 'md:ml-20 landscape:ml-20'} sticky top-0 z-10 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur`}>
         <div className="flex items-center justify-between">
           <h1 className="text-base font-semibold text-zinc-800">Chats</h1>
           <button
@@ -212,7 +256,7 @@ function ChatListPage() {
         </div>
       </header>
 
-      <main className="flex flex-1 flex-col gap-2 p-4 pb-16">
+      <main className={`${pane ? 'min-h-0 overflow-y-auto pb-4' : 'pb-16 md:ml-20 md:pb-4 landscape:ml-20 landscape:pb-4'} flex flex-1 flex-col gap-2 p-4`}>
         {empty ? (
           <p className="pt-16 text-center text-sm text-zinc-400">No messages or friends yet.</p>
         ) : (
@@ -225,6 +269,7 @@ function ChatListPage() {
                 preview={c.lastMessage}
                 timestamp={c.lastAt}
                 unread={c.unread}
+                active={selectedConversationId === c.conversationId}
                 onClick={() => router.push(`/chats?id=${encodeURIComponent(c.conversationId)}`)}
               />
             ))}
@@ -241,6 +286,7 @@ function ChatListPage() {
                     metAtEvent={f.metAtEvent}
                     preview="No messages yet — say hi!"
                     timestamp={0}
+                    active={selectedConversationId === f.conversationId}
                     onClick={() => router.push(`/chats?id=${encodeURIComponent(f.conversationId)}`)}
                   />
                 ))}
@@ -268,7 +314,7 @@ function ChatListPage() {
         )}
       </main>
 
-      <TabBar />
+      {!pane && <TabBar />}
     </>
   )
 }

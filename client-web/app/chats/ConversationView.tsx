@@ -9,8 +9,14 @@ import { encodePayload, decodePayload } from '@/lib/crypto'
 import * as ws from '@/lib/ws'
 import { db } from '@/lib/db'
 import { MessageBubble } from '@/components/MessageBubble'
+import { TabBar } from '@/components/TabBar'
 import { TagSelector } from '@/components/TagSelector'
 import type { ServerEnvelope } from '@/lib/types'
+
+interface ConversationPageProps {
+  conversationId?: string | null
+  embedded?: boolean
+}
 
 function extractFriendId(conversationId: string, myUserId: string): string {
   const a = conversationId.slice(0, 32)
@@ -18,9 +24,9 @@ function extractFriendId(conversationId: string, myUserId: string): string {
   return a === myUserId ? b : a
 }
 
-export default function ConversationPage() {
+export default function ConversationPage({ conversationId: conversationIdProp, embedded = false }: ConversationPageProps = {}) {
   const searchParams = useSearchParams()
-  const conversationId = searchParams.get('id')
+  const conversationId = conversationIdProp ?? searchParams.get('id')
   const bootstrapped = useAppStore((s) => s.bootstrapped)
   const bootstrapError = useAppStore((s) => s.bootstrapError)
   const userId = useAppStore((s) => s.userId)
@@ -173,13 +179,16 @@ export default function ConversationPage() {
   }
 
   const displayName = friendName ?? (friendId ? friendId.slice(0, 8) + '…' : '…')
+  const railOffset = embedded ? '' : 'md:ml-20 landscape:ml-20'
 
   return (
     <>
-      <header className="flex items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur">
-        <button onClick={() => router.back()} className="text-zinc-500 hover:text-zinc-800">
-          <ArrowLeft size={20} />
-        </button>
+      <header className={`flex items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur ${railOffset}`}>
+        {!embedded && (
+          <button onClick={() => router.back()} className="text-zinc-500 hover:text-zinc-800">
+            <ArrowLeft size={20} />
+          </button>
+        )}
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-600">
           {displayName.charAt(0).toUpperCase()}
         </div>
@@ -258,7 +267,7 @@ export default function ConversationPage() {
         </div>
       )}
 
-      <main className="flex flex-1 flex-col gap-2 overflow-y-auto p-4">
+      <main className={`flex flex-1 flex-col gap-2 overflow-y-auto p-4 ${railOffset}`}>
         {messages.map((m) => (
           <MessageBubble
             key={m.id}
@@ -273,7 +282,7 @@ export default function ConversationPage() {
 
       <form
         onSubmit={handleSend}
-        className="flex items-end gap-2 border-t border-zinc-200 bg-white p-4"
+        className={`flex items-end gap-2 border-t border-zinc-200 bg-white p-4 ${railOffset}`}
       >
         <textarea
           value={input}
@@ -293,6 +302,8 @@ export default function ConversationPage() {
           <Send size={16} />
         </button>
       </form>
+
+      {!embedded && <TabBar sideOnly />}
     </>
   )
 }

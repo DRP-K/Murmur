@@ -185,7 +185,7 @@ export default function ConversationPage({ conversationId: conversationIdProp, e
     <>
       <header className={`flex items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur ${railOffset}`}>
         {!embedded && (
-          <button onClick={() => router.back()} className="text-zinc-500 hover:text-zinc-800">
+          <button onClick={() => router.push('/chats')} className="text-zinc-500 hover:text-zinc-800">
             <ArrowLeft size={20} />
           </button>
         )}

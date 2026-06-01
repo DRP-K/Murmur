@@ -26,7 +26,7 @@ export function PostCard({ post, liked, resonated, onToggleLike, onToggleResonat
   const hasImage = !!post.image_url
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+    <div className="relative overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
       {/* Background cover art */}
       {hasImage && (
         <>
@@ -37,7 +37,7 @@ export function PostCard({ post, liked, resonated, onToggleLike, onToggleResonat
             className="absolute inset-0 h-full w-full object-cover"
             style={{ filter: 'blur(3px)', transform: 'scale(1.03)' }}
           />
-          <div className="absolute inset-0 bg-white/80 dark:bg-zinc-900/85" />
+          <div className="absolute inset-0 bg-white/80" />
         </>
       )}
 
@@ -45,7 +45,7 @@ export function PostCard({ post, liked, resonated, onToggleLike, onToggleResonat
         <div className="mb-2 flex items-center justify-between text-xs text-zinc-400">
           <div className="flex items-center gap-1.5">
             {post.category && (
-              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600">
                 {CATEGORY_EMOJI[post.category] ?? ''} {post.category}
               </span>
             )}
@@ -54,12 +54,12 @@ export function PostCard({ post, liked, resonated, onToggleLike, onToggleResonat
           <span>{relativeTime(post.timestamp)}</span>
         </div>
 
-        <p className="mb-1 text-sm leading-relaxed text-zinc-800 dark:text-zinc-100">
+        <p className="mb-1 text-sm leading-relaxed text-zinc-800">
           {post.content}
         </p>
 
         {post.media_ref_name && (
-          <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">{post.media_ref_name}</p>
+          <p className="mb-3 text-xs text-zinc-500">{post.media_ref_name}</p>
         )}
 
         {post.attachment_url && post.attachment_type === 'image' && (
@@ -104,7 +104,7 @@ export function PostCard({ post, liked, resonated, onToggleLike, onToggleResonat
           {!post.is_own && (
             <button
               onClick={onReach}
-              className="ml-auto flex items-center gap-1 rounded-full border border-zinc-300 px-3 py-1 text-xs text-zinc-600 transition-colors hover:border-zinc-500 hover:text-zinc-800 dark:border-zinc-600 dark:text-zinc-300"
+              className="ml-auto flex items-center gap-1 rounded-full border border-zinc-300 px-3 py-1 text-xs text-zinc-600 transition-colors hover:border-zinc-500 hover:text-zinc-800"
             >
               <MessageCircle size={12} />
               Reach

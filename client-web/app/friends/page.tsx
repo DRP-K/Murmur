@@ -10,7 +10,6 @@ import { addFriend } from '@/lib/relay'
 import { db } from '@/lib/db'
 import { QrScanner } from '@/components/QrScanner'
 import { FriendSetupModal } from '@/components/FriendSetupModal'
-import { TabBar } from '@/components/TabBar'
 import type { QrPayload } from '@/lib/types'
 
 type Tab = 'my-qr' | 'scan' | 'by-id'
@@ -134,46 +133,46 @@ export default function FriendsPage() {
   const tabClass = (t: Tab) =>
     `flex-1 py-3 text-center text-sm font-medium transition-colors ${
       tab === t
-        ? 'border-b-2 border-zinc-900 text-zinc-900 dark:border-white dark:text-white'
+        ? 'border-b-2 border-zinc-900 text-zinc-900'
         : 'text-zinc-400'
     }`
 
   return (
     <>
-      <header className="flex items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
+      <header className="flex items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur">
         <button onClick={() => router.back()} className="text-zinc-500 hover:text-zinc-800">
           <ArrowLeft size={20} />
         </button>
-        <h1 className="text-base font-semibold text-zinc-800 dark:text-zinc-100">Add Friend</h1>
+        <h1 className="text-base font-semibold text-zinc-800">Add Friend</h1>
       </header>
 
-      <div className="flex border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="flex border-b border-zinc-200 bg-white">
         <button onClick={() => setTab('my-qr')} className={tabClass('my-qr')}>My QR</button>
         <button onClick={() => setTab('scan')} className={tabClass('scan')}>Scan</button>
         <button onClick={() => setTab('by-id')} className={tabClass('by-id')}>By ID</button>
       </div>
 
-      <main className="flex flex-1 flex-col items-center px-4 py-8 pb-16">
+      <main className="flex flex-1 flex-col items-center px-4 py-8">
         {tab === 'my-qr' && (
           <>
             <p className="mb-6 text-xs text-zinc-400">Show this to your friend:</p>
-            <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
+            <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
               <QRCodeCanvas value={myQrJson} size={200} level="M" fgColor="currentColor"
-                className="text-zinc-900 dark:text-zinc-100" includeMargin />
+                className="text-zinc-900" includeMargin />
             </div>
             <div className="mt-6 w-full max-w-xs">
               <p className="mb-2 text-center text-xs text-zinc-400">Your ID:</p>
               <div className="flex items-center gap-2">
-                <code className="flex-1 truncate rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+                <code className="flex-1 truncate rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-600">
                   {userId}
                 </code>
                 <button onClick={copyId}
-                  className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-300">
+                  className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 hover:border-zinc-400">
                   {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
                 </button>
               </div>
               <button onClick={copyId}
-                className="mt-3 w-full rounded-full border border-zinc-200 py-2 text-sm text-zinc-600 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-300">
+                className="mt-3 w-full rounded-full border border-zinc-200 py-2 text-sm text-zinc-600 hover:border-zinc-400">
                 Copy ID
               </button>
             </div>
@@ -184,10 +183,10 @@ export default function FriendsPage() {
           <>
             <QrScanner onScan={handleScan} onError={setError} />
             {scanResult && (
-              <div className="mt-6 w-full max-w-xs rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-950">
-                <p className="mb-1 text-xs font-medium text-green-700 dark:text-green-300">Friend found:</p>
-                <code className="text-xs text-green-600 dark:text-green-400">{scanResult.user_id.slice(0, 16)}…</code>
-                {scanResult.nickname && <p className="mt-1 text-xs text-green-600 dark:text-green-400">&quot;{scanResult.nickname}&quot;</p>}
+              <div className="mt-6 w-full max-w-xs rounded-xl border border-green-200 bg-green-50 p-4">
+                <p className="mb-1 text-xs font-medium text-green-700">Friend found:</p>
+                <code className="text-xs text-green-600">{scanResult.user_id.slice(0, 16)}…</code>
+                {scanResult.nickname && <p className="mt-1 text-xs text-green-600">&quot;{scanResult.nickname}&quot;</p>}
 
                 <button onClick={handleAddFromScan} disabled={adding}
                   className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-green-600 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-40">
@@ -208,15 +207,15 @@ export default function FriendsPage() {
             <label className="mb-1 block text-xs font-medium text-zinc-500">User ID</label>
             <input value={manualId} onChange={(e) => setManualId(e.target.value)}
               placeholder="e.g. a3f9c7b2..."
-              className="mb-3 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100" />
+              className="mb-3 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none" />
 
             <label className="mb-1 block text-xs font-medium text-zinc-500">Public key (hex)</label>
             <input value={manualPubkey} onChange={(e) => setManualPubkey(e.target.value)}
               placeholder="Ed25519 pubkey in hex..."
-              className="mb-3 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100" />
+              className="mb-3 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none" />
 
             <button type="submit" disabled={adding}
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-zinc-900 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-40 dark:bg-white dark:text-zinc-900">
+              className="flex w-full items-center justify-center gap-2 rounded-full bg-zinc-900 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-40">
               <Hash size={14} />{adding ? 'Adding…' : 'Add by ID'}
             </button>
 
@@ -224,8 +223,6 @@ export default function FriendsPage() {
           </form>
         )}
       </main>
-
-      <TabBar />
 
       {setupFriend && (
         <FriendSetupModal

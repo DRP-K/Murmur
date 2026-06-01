@@ -90,9 +90,9 @@ export function ReachModal({ post, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl dark:bg-zinc-900">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
         <div className="mb-4 flex items-start justify-between gap-2">
-          <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+          <h2 className="text-sm font-semibold text-zinc-800">
             Reach anonymously?
           </h2>
           <button onClick={onClose} className="mt-0.5 text-zinc-400 hover:text-zinc-600">
@@ -101,9 +101,9 @@ export function ReachModal({ post, onClose }: Props) {
         </div>
 
         {/* Post snippet */}
-        <div className="mb-3 rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
+        <div className="mb-3 rounded-xl border border-zinc-100 bg-zinc-50 p-3">
           <p className="text-[11px] font-medium text-zinc-400"># anon</p>
-          <p className="mt-1 line-clamp-2 text-sm text-zinc-700 dark:text-zinc-200">
+          <p className="mt-1 line-clamp-2 text-sm text-zinc-700">
             {post.content}
           </p>
         </div>
@@ -120,7 +120,7 @@ export function ReachModal({ post, onClose }: Props) {
             placeholder="Say something…"
             rows={3}
             maxLength={500}
-            className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm placeholder-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+            className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm placeholder-zinc-400 focus:border-zinc-400 focus:outline-none"
           />
 
           {error && <p className="text-xs text-red-500">{error}</p>}
@@ -129,14 +129,14 @@ export function ReachModal({ post, onClose }: Props) {
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 rounded-full border border-zinc-200 py-2 text-sm text-zinc-600 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-300"
+              className="flex-1 rounded-full border border-zinc-200 py-2 text-sm text-zinc-600 hover:border-zinc-400"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={sending || !message.trim()}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-zinc-900 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-white dark:text-zinc-900"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-zinc-900 py-2 text-sm font-medium text-white disabled:opacity-40"
             >
               <Send size={13} />
               {sending ? 'Sending…' : 'Send →'}

@@ -60,9 +60,9 @@ export function TagSelector({ friendId }: Props) {
             type="checkbox"
             checked={selected.has(tag.id)}
             onChange={() => toggle(tag.id)}
-            className="h-4 w-4 rounded border-zinc-300 accent-zinc-800 dark:accent-zinc-100"
+            className="h-4 w-4 rounded border-zinc-300 accent-zinc-800"
           />
-          <span className="text-sm text-zinc-700 dark:text-zinc-200">{tag.name}</span>
+          <span className="text-sm text-zinc-700">{tag.name}</span>
         </label>
       ))}
 
@@ -71,12 +71,12 @@ export function TagSelector({ friendId }: Props) {
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           placeholder="New tag…"
-          className="flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          className="flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none"
         />
         <button
           type="submit"
           disabled={!newName.trim() || creating}
-          className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-900 text-white disabled:opacity-40 dark:bg-white dark:text-zinc-900"
+          className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-900 text-white disabled:opacity-40"
         >
           <Plus size={14} />
         </button>

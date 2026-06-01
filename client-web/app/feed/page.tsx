@@ -34,6 +34,8 @@ function toPost(env: ServerEnvelope & { type: 'post' }, isOwn = false): Post {
     category: env.category,
     media_ref_name: env.media_ref_name,
     image_url: env.image_url,
+    attachment_url: env.attachment_url,
+    attachment_type: env.attachment_type,
   }
 }
 
@@ -96,6 +98,8 @@ export default function FeedPage() {
     category?: string | null,
     mediaRefName?: string | null,
     imageUrl?: string | null,
+    attachmentUrl?: string | null,
+    attachmentType?: 'image' | 'video' | null,
   ) {
     const t = useAppStore.getState().token
     if (!t) throw new Error('not authenticated')
@@ -112,9 +116,9 @@ export default function FeedPage() {
     const id = crypto.randomUUID()
     const timestamp = Math.floor(Date.now() / 1000)
 
-    addPost({ id, author_id: '', content, timestamp, expires_at: expiresAt, is_own: true, category, media_ref_name: mediaRefName, image_url: imageUrl })
+    addPost({ id, author_id: '', content, timestamp, expires_at: expiresAt, is_own: true, category, media_ref_name: mediaRefName, image_url: imageUrl, attachment_url: attachmentUrl, attachment_type: attachmentType })
 
-    await createPost(t, { id, content, timestamp, expires_at: expiresAt, recipient_ids: recipientIds, category, media_ref_name: mediaRefName, image_url: imageUrl })
+    await createPost(t, { id, content, timestamp, expires_at: expiresAt, recipient_ids: recipientIds, category, media_ref_name: mediaRefName, image_url: imageUrl, attachment_url: attachmentUrl, attachment_type: attachmentType })
   }
 
   if (!bootstrapped) {

@@ -105,6 +105,23 @@ export async function createPost(token: string, req: CreatePostRequest): Promise
   )
 }
 
+export async function uploadMedia(
+  token: string,
+  file: File,
+): Promise<{ url: string; media_type: 'image' | 'video' }> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${RELAY_URL}/api/media`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  })
+  await requireOk(res)
+  const data = await res.json()
+  // Make the URL absolute so it resolves to the relay server regardless of page origin.
+  return { url: `${RELAY_URL}${data.url}`, media_type: data.media_type }
+}
+
 export async function getPosts(token: string): Promise<PostListResponse> {
   const res = await requireOk(await authedFetch(token, '/api/posts'))
   return res.json()

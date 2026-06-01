@@ -22,6 +22,8 @@ export type ServerEnvelope =
       category?: string | null
       media_ref_name?: string | null
       image_url?: string | null
+      attachment_url?: string | null
+      attachment_type?: 'image' | 'video' | null
     }
   | { type: 'delivered_ack'; id: string }
 
@@ -62,6 +64,8 @@ export interface CreatePostRequest {
   category?: string | null
   media_ref_name?: string | null
   image_url?: string | null
+  attachment_url?: string | null
+  attachment_type?: string | null
 }
 
 export interface PostListResponse {
@@ -88,6 +92,8 @@ export interface Post {
   category?: string | null
   media_ref_name?: string | null
   image_url?: string | null
+  attachment_url?: string | null
+  attachment_type?: 'image' | 'video' | null
 }
 
 export interface Message {

@@ -38,6 +38,8 @@ function mergePost(existing: Post, incoming: Post): Post {
     category: incoming.category ?? existing.category,
     media_ref_name: incoming.media_ref_name ?? existing.media_ref_name,
     image_url: incoming.image_url ?? existing.image_url,
+    attachment_url: incoming.attachment_url ?? existing.attachment_url,
+    attachment_type: incoming.attachment_type ?? existing.attachment_type,
   }
 }
 
@@ -51,7 +53,9 @@ function postsMatch(a: Post, b: Post): boolean {
     a.is_own === b.is_own &&
     a.category === b.category &&
     a.media_ref_name === b.media_ref_name &&
-    a.image_url === b.image_url
+    a.image_url === b.image_url &&
+    a.attachment_url === b.attachment_url &&
+    a.attachment_type === b.attachment_type
   )
 }
 

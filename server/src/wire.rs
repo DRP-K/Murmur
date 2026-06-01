@@ -52,6 +52,8 @@ pub enum ServerEnvelope {
         category: Option<String>,
         media_ref_name: Option<String>,
         image_url: Option<String>,
+        attachment_url: Option<String>,
+        attachment_type: Option<String>,
     },
     #[serde(rename = "delivered_ack")]
     DeliveredAck { id: String },
@@ -81,6 +83,8 @@ impl From<Post> for ServerEnvelope {
             category: value.category,
             media_ref_name: value.media_ref_name,
             image_url: value.image_url,
+            attachment_url: value.attachment_url,
+            attachment_type: value.attachment_type,
         }
     }
 }
@@ -100,6 +104,14 @@ pub struct CreatePostRequest {
     pub category: Option<String>,
     pub media_ref_name: Option<String>,
     pub image_url: Option<String>,
+    pub attachment_url: Option<String>,
+    pub attachment_type: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MediaUploadResponse {
+    pub url: String,
+    pub media_type: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

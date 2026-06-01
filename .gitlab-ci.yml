@@ -76,8 +76,6 @@ deploy-production:
   stage: deploy
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-      when: manual
-    - when: never
   environment:
     name: production
   before_script:
@@ -141,7 +139,6 @@ deploy-pages:
     - build-client-web
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-      when: manual
   environment:
     name: cloudflare-pages
     url: https://murmur.pages.dev

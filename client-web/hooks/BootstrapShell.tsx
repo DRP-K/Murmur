@@ -15,8 +15,8 @@ import { usePostSink } from '@/hooks/usePostSink'
  * Sets bootstrapped/bootstrapError on the Zustand store so pages can
  * check readiness without calling useBootstrap individually.
  *
- * All content (loading, error, children) shares the same centered max-w-md
- * container so the page width never changes during transitions.
+ * Phone layouts use the original centered max-width container. Wider and
+ * landscape layouts can take the full viewport for split-pane views.
  *
  * Global WS sinks are registered here so all message types are captured
  * regardless of which page the user is on.
@@ -79,7 +79,7 @@ export function BootstrapShell({ children }: { children: React.ReactNode }) {
   // Show a global loading screen until bootstrap finishes.
   if (!bootstrapped && !bootstrapError) {
     return (
-      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center gap-3 bg-zinc-50">
+      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center gap-3 bg-zinc-50 md:max-w-none landscape:max-w-none">
         <div className="h-2 w-32 overflow-hidden rounded-full bg-zinc-200">
           <div className="h-full w-1/2 animate-pulse rounded-full bg-zinc-400" />
         </div>
@@ -91,7 +91,7 @@ export function BootstrapShell({ children }: { children: React.ReactNode }) {
   // Show a global error screen if bootstrap failed.
   if (bootstrapError) {
     return (
-      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center gap-3 bg-zinc-50">
+      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center gap-3 bg-zinc-50 md:max-w-none landscape:max-w-none">
         <p className="text-sm text-red-500">Failed to start</p>
         <p className="max-w-xs text-center text-xs text-zinc-400">{bootstrapError}</p>
         <button
@@ -105,7 +105,7 @@ export function BootstrapShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col bg-zinc-50">
+    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col bg-zinc-50 md:max-w-none landscape:max-w-none">
       {children}
     </div>
   )

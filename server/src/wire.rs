@@ -61,6 +61,7 @@ pub enum ServerEnvelope {
         attachment_url: Option<String>,
         attachment_type: Option<String>,
         attachments: Option<Vec<MediaItem>>,
+        scheduled_at: Option<i64>,
     },
     #[serde(rename = "delivered_ack")]
     DeliveredAck { id: String },
@@ -96,6 +97,7 @@ impl From<Post> for ServerEnvelope {
                 .attachments
                 .as_deref()
                 .and_then(|s| serde_json::from_str(s).ok()),
+            scheduled_at: value.scheduled_at,
         }
     }
 }
@@ -118,6 +120,7 @@ pub struct CreatePostRequest {
     pub attachment_url: Option<String>,
     pub attachment_type: Option<String>,
     pub attachments: Option<Vec<MediaItem>>,
+    pub scheduled_at: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -71,7 +71,7 @@ impl From<AuthError> for ApiError {
     }
 }
 
-fn now_ts() -> i64 {
+pub fn now_ts() -> i64 {
     Utc::now().timestamp()
 }
 
@@ -389,6 +389,7 @@ pub async fn post_post(
         attachment_url: payload.attachment_url.as_deref(),
         attachment_type: payload.attachment_type.as_deref(),
         attachments: attachments_json.as_deref(),
+        scheduled_at: payload.scheduled_at,
     };
     let recipient_refs: Vec<&str> = payload.recipient_ids.iter().map(String::as_str).collect();
 
@@ -414,22 +415,28 @@ pub async fn post_post(
         attachment_url: payload.attachment_url,
         attachment_type: payload.attachment_type,
         attachments: payload.attachments,
+        scheduled_at: payload.scheduled_at,
     };
 
-    for recipient_id in payload.recipient_ids {
-        if state.send_to_online(&recipient_id, envelope.clone()) {
-            info!(
-                post_id = %payload.id,
-                recipient_id = %recipient_id,
-                "post notified live (pending client ack)"
-            );
-        } else {
-            debug!(
-                post_id = %payload.id,
-                recipient_id = %recipient_id,
-                "post remains pending"
-            );
+    let publish_now = payload.scheduled_at.map_or(true, |t| t <= now_ts());
+    if publish_now {
+        for recipient_id in payload.recipient_ids {
+            if state.send_to_online(&recipient_id, envelope.clone()) {
+                info!(
+                    post_id = %payload.id,
+                    recipient_id = %recipient_id,
+                    "post notified live (pending client ack)"
+                );
+            } else {
+                debug!(
+                    post_id = %payload.id,
+                    recipient_id = %recipient_id,
+                    "post remains pending"
+                );
+            }
         }
+    } else {
+        info!(post_id = %payload.id, scheduled_at = ?payload.scheduled_at, "post scheduled for future delivery");
     }
 
     info!(post_id = %payload.id, "post fanout recorded");

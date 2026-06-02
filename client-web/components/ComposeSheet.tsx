@@ -170,6 +170,9 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
     setMediaCategory(category)
     setMediaRefName(mediaRefName)
     setMediaImageUrl(null)
+    setAssistSuggestion((suggestion) =>
+      suggestion ? { ...suggestion, category: null, mediaRefName: null } : null,
+    )
     setApplyingAssistMedia(true)
     try {
       const imageUrl = await fetchMediaImage(category, mediaRefName)

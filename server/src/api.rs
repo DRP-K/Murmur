@@ -727,7 +727,8 @@ pub async fn add_friend_by_token(
 
     let sent_at = now_ts();
     let mut conn = state.pool.get().map_err(db_error)?;
-    repository::add_friendship_pair(&mut conn, &redeemer_id, &creator_id, sent_at).map_err(db_error)?;
+    repository::add_friendship_pair(&mut conn, &redeemer_id, &creator_id, sent_at)
+        .map_err(db_error)?;
     info!(redeemer = %redeemer_id, creator = %creator_id, "friendship pair recorded via invite token");
 
     let redeemer = repository::get_user(&mut conn, &redeemer_id).map_err(db_error)?;

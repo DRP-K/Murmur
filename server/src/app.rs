@@ -139,7 +139,13 @@ impl AppState {
                 let n = u32::from_be_bytes(bytes.as_bytes()[0..4].try_into().unwrap());
                 let code = format!("{:06}", n % 1_000_000);
                 if !tokens.contains_key(&code) {
-                    tokens.insert(code.clone(), InviteToken { creator_id, expires_at });
+                    tokens.insert(
+                        code.clone(),
+                        InviteToken {
+                            creator_id,
+                            expires_at,
+                        },
+                    );
                     return (code, expires_at);
                 }
             }

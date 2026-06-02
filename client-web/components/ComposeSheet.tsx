@@ -68,11 +68,9 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
 
   if (!open) return null
 
-  const ghostSuffix =
-    assistSuggestion &&
-    content.startsWith(assistSuggestion.requestedPrefix) &&
-    assistSuggestion.completedContent.startsWith(content)
-      ? assistSuggestion.completedContent.slice(content.length)
+  const expandedSuggestion =
+    assistSuggestion && assistSuggestion.completedContent !== content
+      ? assistSuggestion.completedContent
       : ''
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -115,14 +113,14 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
     setContentValue(value)
     setAssistSuggestion((suggestion) => {
       if (!suggestion) return null
-      if (!suggestion.completedContent.startsWith(value)) return null
+      if (suggestion.requestedPrefix !== value.trim()) return null
       return suggestion
     })
   }
 
   async function requestAssist() {
-    const prefix = contentRef.current.trim()
-    if (prefix.split(/\s+/).filter(Boolean).length < 2) {
+    const outline = contentRef.current.trim()
+    if (outline.split(/\s+/).filter(Boolean).length < 2) {
       setError('Type at least a few words first.')
       return
     }
@@ -137,11 +135,10 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
     setAssisting(true)
     setError(null)
     try {
-      const suggestion = await assistPost(token, prefix)
+      const suggestion = await assistPost(token, outline)
       if (assistRequestRef.current !== requestId) return
       const current = contentRef.current.trim()
-      if (!current.startsWith(prefix)) return
-      if (!suggestion.completed_content.startsWith(current)) return
+      if (current !== outline) return
       setAssistSuggestion({
         requestedPrefix: current,
         completedContent: suggestion.completed_content,
@@ -149,7 +146,7 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
         mediaRefName: suggestion.media_ref_name,
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Autocomplete failed')
+      setError(err instanceof Error ? err.message : 'Expansion failed')
     } finally {
       if (assistRequestRef.current === requestId) setAssisting(false)
     }
@@ -158,9 +155,14 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
   function applyAssistText() {
     if (!assistSuggestion) return
     setContentValue(assistSuggestion.completedContent)
-    setAssistSuggestion((suggestion) =>
-      suggestion ? { ...suggestion, requestedPrefix: suggestion.completedContent } : null,
-    )
+    setAssistSuggestion((suggestion) => {
+      if (!suggestion?.category || !suggestion.mediaRefName) return null
+      return {
+        ...suggestion,
+        requestedPrefix: suggestion.completedContent,
+        completedContent: suggestion.completedContent,
+      }
+    })
   }
 
   async function applyAssistMedia() {
@@ -263,33 +265,16 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
               autoFocus
               value={content}
               onChange={(e) => handleContentChange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Tab' && ghostSuffix) {
-                  e.preventDefault()
-                  applyAssistText()
-                }
-              }}
               placeholder="What's on your mind?"
               rows={4}
               maxLength={500}
-              className={`relative w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 pr-20 text-sm leading-normal placeholder-zinc-400 focus:border-zinc-400 focus:outline-none ${
-                ghostSuffix ? 'text-transparent caret-zinc-800' : 'text-zinc-800'
-              }`}
+              className="relative w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 pr-20 text-sm leading-normal text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none"
             />
-            {ghostSuffix && (
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-0 whitespace-pre-wrap rounded-xl border border-transparent p-3 pr-20 text-sm leading-normal text-zinc-800"
-              >
-                <span>{content}</span>
-                <span className="text-zinc-400">{ghostSuffix}</span>
-              </div>
-            )}
             <button
               type="button"
               onClick={requestAssist}
               disabled={assisting || !content.trim()}
-              title="Autocomplete post"
+              title="Expand post"
               className={`absolute right-10 top-2 rounded-lg px-1.5 py-1 text-[10px] font-semibold transition-colors ${
                 assisting
                   ? 'bg-zinc-100 text-zinc-400'
@@ -312,15 +297,15 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
             </button>
           </div>
 
-          {(ghostSuffix || (assistSuggestion?.category && assistSuggestion.mediaRefName)) && (
-            <div className="flex flex-wrap items-center gap-2">
-              {ghostSuffix && (
+          {(expandedSuggestion || (assistSuggestion?.category && assistSuggestion.mediaRefName)) && (
+            <div className="flex flex-col gap-2">
+              {expandedSuggestion && (
                 <button
                   type="button"
                   onClick={applyAssistText}
-                  className="rounded-full bg-zinc-900 px-3 py-1 text-xs font-medium text-white hover:bg-zinc-700"
+                  className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-left text-sm leading-relaxed text-emerald-800 hover:bg-emerald-100"
                 >
-                  Apply autocomplete
+                  {expandedSuggestion}
                 </button>
               )}
               {assistSuggestion?.category && assistSuggestion.mediaRefName && (
@@ -328,7 +313,7 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
                   type="button"
                   onClick={applyAssistMedia}
                   disabled={applyingAssistMedia}
-                  className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-200 disabled:opacity-60"
+                  className="self-start rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-200 disabled:opacity-60"
                 >
                   {CATEGORY_EMOJI[assistSuggestion.category]} {assistSuggestion.mediaRefName}
                   {applyingAssistMedia ? ' ...' : ''}

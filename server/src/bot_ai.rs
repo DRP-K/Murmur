@@ -96,26 +96,26 @@ pub async fn generate_welcome(
 pub async fn generate_post_assist(
     client: &Client,
     api_key: &str,
-    prefix: &str,
+    outline: &str,
 ) -> Option<PostAssistResponse> {
-    let system_prompt = "You autocomplete short posts for Murmur, a private social app. \
-        Given the user's partial post, infer a natural complete post they may want to publish. \
+    let system_prompt = "You expand short post outlines for Murmur, a private social app. \
+        Given the user's rough outline, rewrite the whole post into a natural publishable post. \
         Also infer a referenced media item only when the post clearly points to a movie, song, album, artist, or game. \
         Return strict JSON only with keys completed_content, category, media_ref_name. \
         category must be one of movies, music, games, or null. \
         media_ref_name must be the exact likely title/name or null. \
-        completed_content must start with the user's partial post, be casual, and be at most 500 characters.";
-    let user_prompt = format!("Partial post: {prefix}");
+        completed_content must preserve the user's intent, be casual, and be at most 500 characters.";
+    let user_prompt = format!("Post outline: {outline}");
     let history = [ChatMessage {
         role: "user",
         content: user_prompt,
     }];
     let text =
         call_deepseek_with_options(client, api_key, system_prompt, &history, 220, 0.6).await?;
-    sanitize_post_assist_json(prefix, &text)
+    sanitize_post_assist_json(outline, &text)
 }
 
-pub fn sanitize_post_assist_json(prefix: &str, text: &str) -> Option<PostAssistResponse> {
+pub fn sanitize_post_assist_json(_outline: &str, text: &str) -> Option<PostAssistResponse> {
     let value: Value = serde_json::from_str(text)
         .or_else(|_| {
             let start = text
@@ -135,12 +135,10 @@ pub fn sanitize_post_assist_json(prefix: &str, text: &str) -> Option<PostAssistR
         .map_err(|e| warn!(error = %e, "post assist json parse failed"))
         .ok()?;
 
-    let trimmed_prefix = prefix.trim();
     let mut completed = value["completed_content"].as_str()?.trim().to_string();
     completed = truncate_chars(&completed, 500);
-    if completed.is_empty() || !completed.starts_with(trimmed_prefix) {
-        completed = format!("{trimmed_prefix} {}", completed).trim().to_string();
-        completed = truncate_chars(&completed, 500);
+    if completed.is_empty() {
+        return None;
     }
 
     let category = value["category"]
@@ -259,6 +257,22 @@ mod tests {
 
         assert_eq!(response.category, None);
         assert_eq!(response.media_ref_name, None);
+    }
+
+    #[test]
+    fn sanitize_post_assist_allows_rewritten_expansion() {
+        let response = sanitize_post_assist_json(
+            "portal puzzles hard",
+            r#"{"completed_content":"Portal 2 has me stuck on one puzzle, but in the best possible way.","category":"games","media_ref_name":"Portal 2"}"#,
+        )
+        .expect("response should parse");
+
+        assert_eq!(
+            response.completed_content,
+            "Portal 2 has me stuck on one puzzle, but in the best possible way."
+        );
+        assert_eq!(response.category.as_deref(), Some("games"));
+        assert_eq!(response.media_ref_name.as_deref(), Some("Portal 2"));
     }
 
     #[test]

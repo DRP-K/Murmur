@@ -438,20 +438,20 @@ pub async fn post_assist(
     let prefix = payload.prefix.trim();
     if prefix.split_whitespace().count() < 2 {
         return Err(ApiError::BadRequest(
-            "type at least a few words before asking for autocomplete".to_string(),
+            "type at least a few words before asking for expansion".to_string(),
         ));
     }
 
     let Some(api_key) = state.deepseek_api_key.clone() else {
         return Err(ApiError::ServiceUnavailable(
-            "post autocomplete is not configured".to_string(),
+            "post expansion is not configured".to_string(),
         ));
     };
 
     let suggestion = bot_ai::generate_post_assist(&state.http_client, &api_key, prefix)
         .await
-        .ok_or_else(|| ApiError::Internal("post autocomplete failed".to_string()))?;
-    info!(user_id = %user_id, "post autocomplete generated");
+        .ok_or_else(|| ApiError::Internal("post expansion failed".to_string()))?;
+    info!(user_id = %user_id, "post expansion generated");
     Ok(Json(suggestion))
 }
 

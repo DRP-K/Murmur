@@ -62,23 +62,46 @@ export function PostCard({ post, liked, resonated, onToggleLike, onToggleResonat
           <p className="mb-3 text-xs text-zinc-500">{post.media_ref_name}</p>
         )}
 
-        {post.attachment_url && post.attachment_type === 'image' && (
-          <img
-            src={post.attachment_url}
-            alt=""
-            className="mb-3 max-h-64 w-full rounded-lg object-contain"
-          />
+        {post.attachments && post.attachments.length > 0 ? (
+          <div className="mb-3 flex gap-2 overflow-x-auto">
+            {post.attachments.map((item, i) =>
+              item.media_type === 'video' ? (
+                <video
+                  key={i}
+                  src={item.url}
+                  controls
+                  className="flex-shrink-0 max-h-64 max-w-[80%] rounded-lg bg-black"
+                />
+              ) : (
+                <img
+                  key={i}
+                  src={item.url}
+                  alt=""
+                  className="flex-shrink-0 max-h-64 max-w-[80%] rounded-lg object-contain"
+                />
+              )
+            )}
+          </div>
+        ) : (
+          <>
+            {post.attachment_url && post.attachment_type === 'image' && (
+              <img
+                src={post.attachment_url}
+                alt=""
+                className="mb-3 max-h-64 w-full rounded-lg object-contain"
+              />
+            )}
+            {post.attachment_url && post.attachment_type === 'video' && (
+              <video
+                src={post.attachment_url}
+                controls
+                className="mb-3 max-h-64 w-full rounded-lg bg-black"
+              />
+            )}
+          </>
         )}
 
-        {post.attachment_url && post.attachment_type === 'video' && (
-          <video
-            src={post.attachment_url}
-            controls
-            className="mb-3 max-h-64 w-full rounded-lg bg-black"
-          />
-        )}
-
-        {!post.media_ref_name && !post.attachment_url && <div className="mb-4" />}
+        {!post.media_ref_name && !post.attachment_url && !post.attachments?.length && <div className="mb-4" />}
 
         <div className="flex items-center gap-4">
           <button

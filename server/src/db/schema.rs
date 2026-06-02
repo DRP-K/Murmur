@@ -40,6 +40,7 @@ diesel::table! {
         image_url -> Nullable<Text>,
         attachment_url -> Nullable<Text>,
         attachment_type -> Nullable<Text>,
+        attachments -> Nullable<Text>,
     }
 }
 

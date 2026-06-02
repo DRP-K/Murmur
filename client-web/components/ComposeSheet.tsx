@@ -6,6 +6,7 @@ import { db, type LocalTag } from '@/lib/db'
 import { assistPost, uploadMedia } from '@/lib/relay'
 import { useAppStore } from '@/lib/store'
 import { fetchMediaImage, PostSuggestions, type Category, type SelectedSuggestion } from './PostSuggestions'
+import type { MediaItem } from '@/lib/types'
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024
@@ -21,8 +22,7 @@ interface Props {
     category?: string | null,
     mediaRefName?: string | null,
     imageUrl?: string | null,
-    attachmentUrl?: string | null,
-    attachmentType?: 'image' | 'video' | null,
+    attachments?: MediaItem[] | null,
   ) => Promise<void>
 }
 
@@ -56,8 +56,8 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
   const [assistSuggestion, setAssistSuggestion] = useState<AssistSuggestion | null>(null)
   const [assisting, setAssisting] = useState(false)
   const [applyingAssistMedia, setApplyingAssistMedia] = useState(false)
-  const [pendingFile, setPendingFile] = useState<File | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [previewUrls, setPreviewUrls] = useState<string[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const assistRequestRef = useRef(0)
   const contentRef = useRef('')
@@ -74,34 +74,44 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
       : ''
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
     if (!fileInputRef.current) return
+    const files = Array.from(e.target.files ?? [])
     fileInputRef.current.value = ''
-    if (!file) return
+    if (files.length === 0) return
 
-    if (!ALLOWED_TYPES.includes(file.type)) {
-      setError('Unsupported file type. Use JPEG, PNG, GIF, WEBP, MP4, or WEBM.')
-      return
-    }
-    const isVideo = file.type.startsWith('video/')
-    if (isVideo && file.size > MAX_VIDEO_BYTES) {
-      setError('Video must be under 50 MB.')
-      return
-    }
-    if (!isVideo && file.size > MAX_IMAGE_BYTES) {
-      setError('Image must be under 10 MB.')
-      return
+    const validFiles: File[] = []
+    const validUrls: string[] = []
+    for (const file of files) {
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        setError('Unsupported file type. Use JPEG, PNG, GIF, WEBP, MP4, or WEBM.')
+        continue
+      }
+      const isVideo = file.type.startsWith('video/')
+      if (isVideo && file.size > MAX_VIDEO_BYTES) {
+        setError('Video must be under 50 MB.')
+        continue
+      }
+      if (!isVideo && file.size > MAX_IMAGE_BYTES) {
+        setError('Image must be under 10 MB.')
+        continue
+      }
+      validFiles.push(file)
+      validUrls.push(URL.createObjectURL(file))
     }
 
-    setError(null)
-    setPendingFile(file)
-    setPreviewUrl(URL.createObjectURL(file))
+    if (validFiles.length > 0) {
+      setError(null)
+      setPendingFiles((prev) => [...prev, ...validFiles].slice(0, 4))
+      setPreviewUrls((prev) => [...prev, ...validUrls].slice(0, 4))
+    }
   }
 
-  function clearAttachment() {
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
-    setPendingFile(null)
-    setPreviewUrl(null)
+  function clearAttachment(index: number) {
+    setPreviewUrls((prev) => {
+      URL.revokeObjectURL(prev[index])
+      return prev.filter((_, i) => i !== index)
+    })
+    setPendingFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
   function setContentValue(value: string) {
@@ -210,20 +220,18 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
     setSending(true)
     setError(null)
     try {
-      let attachmentUrl: string | null = null
-      let attachmentType: 'image' | 'video' | null = null
+      let attachments: MediaItem[] | null = null
 
-      if (pendingFile) {
+      if (pendingFiles.length > 0) {
         const token = useAppStore.getState().token
         if (!token) throw new Error('not authenticated')
-        const result = await uploadMedia(token, pendingFile)
-        attachmentUrl = result.url
-        attachmentType = result.media_type
+        const results = await Promise.all(pendingFiles.map((f) => uploadMedia(token, f)))
+        attachments = results.map((r) => ({ url: r.url, media_type: r.media_type }))
       }
 
       const expiresAt = expirySeconds ? Math.floor(Date.now() / 1000) + expirySeconds : null
       const tagIds = selectedTagIds.size > 0 ? [...selectedTagIds] : null
-      await onSubmit(content.trim(), expiresAt, tagIds, mediaCategory, mediaRefName, mediaImageUrl, attachmentUrl, attachmentType)
+      await onSubmit(content.trim(), expiresAt, tagIds, mediaCategory, mediaRefName, mediaImageUrl, attachments)
       setContentValue('')
       setExpirySeconds(null)
       setSelectedTagIds(new Set())
@@ -232,7 +240,9 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
       setMediaRefName(null)
       setMediaImageUrl(null)
       setAssistSuggestion(null)
-      clearAttachment()
+      previewUrls.forEach((u) => URL.revokeObjectURL(u))
+      setPendingFiles([])
+      setPreviewUrls([])
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to post')
@@ -255,6 +265,7 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
           ref={fileInputRef}
           type="file"
           accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm"
+          multiple
           className="hidden"
           onChange={handleFileChange}
         />
@@ -322,28 +333,24 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
             </div>
           )}
 
-          {previewUrl && pendingFile && (
-            <div className="relative overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-700">
-              {pendingFile.type.startsWith('video/') ? (
-                <video
-                  src={previewUrl}
-                  controls
-                  className="max-h-48 w-full object-contain bg-black"
-                />
-              ) : (
-                <img
-                  src={previewUrl}
-                  alt="attachment preview"
-                  className="max-h-48 w-full object-contain"
-                />
-              )}
-              <button
-                type="button"
-                onClick={clearAttachment}
-                className="absolute right-2 top-2 rounded-full bg-black/50 p-1 text-white hover:bg-black/70"
-              >
-                <X size={12} />
-              </button>
+          {pendingFiles.length > 0 && (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {pendingFiles.map((file, i) => (
+                <div key={i} className="relative flex-shrink-0 h-24 w-24 overflow-hidden rounded-xl border border-zinc-200">
+                  {file.type.startsWith('video/') ? (
+                    <video src={previewUrls[i]} className="h-full w-full object-cover bg-black" />
+                  ) : (
+                    <img src={previewUrls[i]} alt="" className="h-full w-full object-cover" />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => clearAttachment(i)}
+                    className="absolute right-1 top-1 rounded-full bg-black/50 p-0.5 text-white hover:bg-black/70"
+                  >
+                    <X size={10} />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
 
@@ -393,7 +400,7 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
                 onClick={() => fileInputRef.current?.click()}
                 title="Attach image or video"
                 className={`rounded-lg p-1.5 transition-colors ${
-                  pendingFile
+                  pendingFiles.length > 0
                     ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
                     : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'
                 }`}

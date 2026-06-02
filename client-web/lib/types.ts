@@ -2,6 +2,11 @@
 
 export type MsgType = 'dm' | 'anon' | 'friend_added'
 
+export interface MediaItem {
+  url: string
+  media_type: 'image' | 'video'
+}
+
 export type ServerEnvelope =
   | {
       type: 'message'
@@ -24,6 +29,7 @@ export type ServerEnvelope =
       image_url?: string | null
       attachment_url?: string | null
       attachment_type?: 'image' | 'video' | null
+      attachments?: MediaItem[] | null
     }
   | { type: 'delivered_ack'; id: string }
 
@@ -66,6 +72,7 @@ export interface CreatePostRequest {
   image_url?: string | null
   attachment_url?: string | null
   attachment_type?: string | null
+  attachments?: MediaItem[] | null
 }
 
 export interface PostAssistRequest {
@@ -104,6 +111,7 @@ export interface Post {
   image_url?: string | null
   attachment_url?: string | null
   attachment_type?: 'image' | 'video' | null
+  attachments?: MediaItem[] | null
 }
 
 export interface Message {

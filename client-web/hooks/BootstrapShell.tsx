@@ -9,6 +9,7 @@ import { useAnonSink } from '@/hooks/useAnonSink'
 import { useFriendSink } from '@/hooks/useFriendSink'
 import { useMessageSink } from '@/hooks/useMessageSink'
 import { usePostSink } from '@/hooks/usePostSink'
+import { FriendSetupModal } from '@/components/FriendSetupModal'
 
 /**
  * Runs the full app boot sequence once on mount inside the root layout.
@@ -28,6 +29,9 @@ export function BootstrapShell({ children }: { children: React.ReactNode }) {
   const setBootstrapped = useAppStore((s) => s.setBootstrapped)
   const bootstrapped = useAppStore((s) => s.bootstrapped)
   const bootstrapError = useAppStore((s) => s.bootstrapError)
+  const pendingFriendSetups = useAppStore((s) => s.pendingFriendSetups)
+  const popFriendSetup = useAppStore((s) => s.popFriendSetup)
+  const currentSetup = pendingFriendSetups[0] ?? null
 
   // Global sinks — always active once booted.
   useAnonSink()
@@ -107,6 +111,14 @@ export function BootstrapShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-col bg-zinc-50 md:max-w-none landscape:max-w-none">
       {children}
+      {currentSetup && (
+        <FriendSetupModal
+          friendId={currentSetup.friendId}
+          initialNickname={currentSetup.nickname}
+          initialMetAtEvent={currentSetup.metAtEvent}
+          onDone={popFriendSetup}
+        />
+      )}
     </div>
   )
 }

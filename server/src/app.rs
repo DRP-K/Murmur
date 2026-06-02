@@ -15,11 +15,17 @@ use crate::db::{DbPool, establish_pool, run_migrations};
 use crate::seed;
 use crate::wire::ServerEnvelope;
 
+pub struct InviteToken {
+    pub creator_id: String,
+    pub expires_at: i64,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub pool: DbPool,
     pub sessions: Arc<RwLock<HashMap<String, String>>>,
     pub online: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<ServerEnvelope>>>>,
+    pub invite_tokens: Arc<RwLock<HashMap<String, InviteToken>>>,
     pub deepseek_api_key: Option<Arc<String>>,
     pub http_client: Arc<reqwest::Client>,
     /// Keyed by (bot_id, user_id). Holds the alternating user/assistant turns for each
@@ -45,6 +51,7 @@ impl AppState {
             pool,
             sessions: Arc::new(RwLock::new(HashMap::new())),
             online: Arc::new(RwLock::new(HashMap::new())),
+            invite_tokens: Arc::new(RwLock::new(HashMap::new())),
             deepseek_api_key,
             http_client: Arc::new(reqwest::Client::new()),
             conversation_history: Arc::new(RwLock::new(HashMap::new())),
@@ -122,6 +129,34 @@ impl AppState {
             None => false,
         }
     }
+
+    pub fn create_invite_token(&self, creator_id: String, now: i64) -> (String, i64) {
+        let expires_at = now + 120;
+        if let Ok(mut tokens) = self.invite_tokens.write() {
+            tokens.retain(|_, v| v.expires_at > now);
+            loop {
+                let bytes = uuid::Uuid::new_v4();
+                let n = u32::from_be_bytes(bytes.as_bytes()[0..4].try_into().unwrap());
+                let code = format!("{:06}", n % 1_000_000);
+                if !tokens.contains_key(&code) {
+                    tokens.insert(code.clone(), InviteToken { creator_id, expires_at });
+                    return (code, expires_at);
+                }
+            }
+        }
+        // Fallback: should not happen unless lock is poisoned.
+        (String::from("000000"), expires_at)
+    }
+
+    pub fn consume_invite_token(&self, code: &str, now: i64) -> Option<String> {
+        let mut tokens = self.invite_tokens.write().ok()?;
+        let entry = tokens.remove(code)?;
+        if entry.expires_at > now {
+            Some(entry.creator_id)
+        } else {
+            None
+        }
+    }
 }
 
 pub fn router(state: AppState) -> Router {
@@ -147,6 +182,8 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/media/{filename}", get(api::get_media))
         .route("/api/friends", get(api::get_friends).post(api::add_friend))
+        .route("/api/invite-token", post(api::create_invite_token))
+        .route("/api/friends/by-token", post(api::add_friend_by_token))
         .route("/api/ws", get(api::ws_handler))
         .layer(cors)
         .with_state(state)

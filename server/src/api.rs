@@ -21,8 +21,9 @@ use crate::db::repository;
 use crate::seed;
 use crate::wire::{
     AckPostRequest, AddFriendRequest, AuthRequest, AuthResponse, CreatePostRequest, FriendInfo,
-    FriendListResponse, MediaUploadResponse, MessageListResponse, PostAssistRequest,
-    PostAssistResponse, PostListResponse, RegisterRequest, SendMessageRequest, ServerEnvelope,
+    FriendListResponse, InviteTokenResponse, MediaUploadResponse, MessageListResponse,
+    PostAssistRequest, PostAssistResponse, PostListResponse, RedeemInviteTokenRequest,
+    RegisterRequest, SendMessageRequest, ServerEnvelope,
 };
 
 #[derive(Debug)]
@@ -698,6 +699,110 @@ pub async fn get_media(Path(filename): Path<String>) -> Response {
             error!(filename = %filename, error = %err, "media response build failed");
             ApiError::Internal("response build failed".into()).into_response()
         })
+}
+
+pub async fn create_invite_token(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<InviteTokenResponse>, ApiError> {
+    let creator_id = authed_user(&headers, &state)?;
+    let (code, expires_at) = state.create_invite_token(creator_id.clone(), now_ts());
+    info!(user_id = %creator_id, code = %code, "invite token created");
+    Ok(Json(InviteTokenResponse { code, expires_at }))
+}
+
+pub async fn add_friend_by_token(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<RedeemInviteTokenRequest>,
+) -> Result<StatusCode, ApiError> {
+    let redeemer_id = authed_user(&headers, &state)?;
+    let creator_id = state
+        .consume_invite_token(&payload.code, now_ts())
+        .ok_or(ApiError::NotFound)?;
+
+    if redeemer_id == creator_id {
+        return Err(ApiError::BadRequest("cannot add yourself".to_string()));
+    }
+
+    let sent_at = now_ts();
+    let mut conn = state.pool.get().map_err(db_error)?;
+    repository::add_friendship_pair(&mut conn, &redeemer_id, &creator_id, sent_at).map_err(db_error)?;
+    info!(redeemer = %redeemer_id, creator = %creator_id, "friendship pair recorded via invite token");
+
+    let redeemer = repository::get_user(&mut conn, &redeemer_id).map_err(db_error)?;
+    let creator = repository::get_user(&mut conn, &creator_id).map_err(db_error)?;
+    let nonce_hex = "000000000000000000000000".to_string();
+
+    // Notify redeemer: you now know the creator.
+    let msg_to_redeemer_id = Uuid::new_v4().to_string();
+    let payload_for_redeemer = hex::encode(
+        serde_json::json!({"user_id": creator_id, "pubkey_hex": creator.pubkey_hex})
+            .to_string()
+            .as_bytes(),
+    );
+    repository::enqueue_message(
+        &mut conn,
+        &NewPendingMessage {
+            id: &msg_to_redeemer_id,
+            recipient_id: &redeemer_id,
+            sender_id: &creator_id,
+            payload_hex: &payload_for_redeemer,
+            nonce_hex: &nonce_hex,
+            msg_type: "friend_added",
+            sent_at,
+        },
+    )
+    .map_err(db_error)?;
+    if state.send_to_online(
+        &redeemer_id,
+        ServerEnvelope::Message {
+            id: msg_to_redeemer_id,
+            sender_id: creator_id.clone(),
+            payload_hex: payload_for_redeemer,
+            nonce_hex: nonce_hex.clone(),
+            msg_type: "friend_added".to_string(),
+            sent_at,
+        },
+    ) {
+        info!(redeemer = %redeemer_id, "friend_added delivered live to redeemer");
+    }
+
+    // Notify creator: you now know the redeemer.
+    let msg_to_creator_id = Uuid::new_v4().to_string();
+    let payload_for_creator = hex::encode(
+        serde_json::json!({"user_id": redeemer_id, "pubkey_hex": redeemer.pubkey_hex})
+            .to_string()
+            .as_bytes(),
+    );
+    repository::enqueue_message(
+        &mut conn,
+        &NewPendingMessage {
+            id: &msg_to_creator_id,
+            recipient_id: &creator_id,
+            sender_id: &redeemer_id,
+            payload_hex: &payload_for_creator,
+            nonce_hex: &nonce_hex,
+            msg_type: "friend_added",
+            sent_at,
+        },
+    )
+    .map_err(db_error)?;
+    if state.send_to_online(
+        &creator_id,
+        ServerEnvelope::Message {
+            id: msg_to_creator_id,
+            sender_id: redeemer_id.clone(),
+            payload_hex: payload_for_creator,
+            nonce_hex,
+            msg_type: "friend_added".to_string(),
+            sent_at,
+        },
+    ) {
+        info!(creator = %creator_id, "friend_added delivered live to creator");
+    }
+
+    Ok(StatusCode::ACCEPTED)
 }
 
 pub async fn ws_handler(

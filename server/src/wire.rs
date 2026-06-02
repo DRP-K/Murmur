@@ -152,3 +152,14 @@ pub struct FriendListResponse {
 pub struct AddFriendRequest {
     pub friend_id: String,
 }
+
+#[derive(Debug, Serialize)]
+pub struct InviteTokenResponse {
+    pub code: String,
+    pub expires_at: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RedeemInviteTokenRequest {
+    pub code: String,
+}

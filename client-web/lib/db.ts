@@ -54,6 +54,7 @@ export interface StoredPost {
   category?: string | null
   media_ref_name?: string | null
   image_url?: string | null
+  scheduled_at?: number | null
 }
 
 export interface LocalTag {
@@ -127,6 +128,9 @@ class MurmurDatabase extends Dexie {
     })
     this.version(8).stores({
       friends: 'userId, blockedAt, metAtEvent',
+    })
+    this.version(9).stores({
+      posts: 'id, timestamp, category, scheduled_at',
     })
   }
 }

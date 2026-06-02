@@ -11,7 +11,7 @@ import { PostCard } from '@/components/PostCard'
 import { ComposeSheet } from '@/components/ComposeSheet'
 import { ReachModal } from '@/components/ReachModal'
 import { TabBar } from '@/components/TabBar'
-import type { Post, ServerEnvelope, MediaItem } from '@/lib/types'
+import type { Post, ServerEnvelope, MediaItem, CreatePostRequest } from '@/lib/types'
 
 type Reactions = Map<string, Set<string>>
 
@@ -37,6 +37,7 @@ function toPost(env: ServerEnvelope & { type: 'post' }, isOwn = false): Post {
     attachment_url: env.attachment_url,
     attachment_type: env.attachment_type,
     attachments: env.attachments,
+    scheduled_at: env.scheduled_at,
   }
 }
 
@@ -100,6 +101,7 @@ export default function FeedPage() {
     mediaRefName?: string | null,
     imageUrl?: string | null,
     attachments?: MediaItem[] | null,
+    scheduledAt?: number | null,
   ) {
     const t = useAppStore.getState().token
     if (!t) throw new Error('not authenticated')
@@ -116,9 +118,9 @@ export default function FeedPage() {
     const id = crypto.randomUUID()
     const timestamp = Math.floor(Date.now() / 1000)
 
-    addPost({ id, author_id: '', content, timestamp, expires_at: expiresAt, is_own: true, category, media_ref_name: mediaRefName, image_url: imageUrl, attachments })
+    addPost({ id, author_id: '', content, timestamp, expires_at: expiresAt, is_own: true, category, media_ref_name: mediaRefName, image_url: imageUrl, attachments, scheduled_at: scheduledAt })
 
-    await createPost(t, { id, content, timestamp, expires_at: expiresAt, recipient_ids: recipientIds, category, media_ref_name: mediaRefName, image_url: imageUrl, attachments })
+    await createPost(t, { id, content, timestamp, expires_at: expiresAt, recipient_ids: recipientIds, category, media_ref_name: mediaRefName, image_url: imageUrl, attachments, scheduled_at: scheduledAt })
   }
 
   if (!bootstrapped) {

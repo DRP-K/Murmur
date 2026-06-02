@@ -30,6 +30,7 @@ export type ServerEnvelope =
       attachment_url?: string | null
       attachment_type?: 'image' | 'video' | null
       attachments?: MediaItem[] | null
+      scheduled_at?: number | null
     }
   | { type: 'delivered_ack'; id: string }
 
@@ -73,6 +74,7 @@ export interface CreatePostRequest {
   attachment_url?: string | null
   attachment_type?: string | null
   attachments?: MediaItem[] | null
+  scheduled_at?: number | null
 }
 
 export interface PostAssistRequest {
@@ -112,6 +114,7 @@ export interface Post {
   attachment_url?: string | null
   attachment_type?: 'image' | 'video' | null
   attachments?: MediaItem[] | null
+  scheduled_at?: number | null
 }
 
 export interface Message {

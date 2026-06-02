@@ -108,6 +108,18 @@ pub struct CreatePostRequest {
     pub attachment_type: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct PostAssistRequest {
+    pub prefix: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct PostAssistResponse {
+    pub completed_content: String,
+    pub category: Option<String>,
+    pub media_ref_name: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct MediaUploadResponse {
     pub url: String,

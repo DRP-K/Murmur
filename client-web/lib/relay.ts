@@ -6,6 +6,8 @@ import type {
   SendMessageRequest,
   MessageListResponse,
   CreatePostRequest,
+  PostAssistRequest,
+  PostAssistResponse,
   PostListResponse,
   AckPostRequest,
   AddFriendRequest,
@@ -103,6 +105,14 @@ export async function createPost(token: string, req: CreatePostRequest): Promise
   await requireOk(
     await authedFetch(token, '/api/posts', { method: 'POST', body: JSON.stringify(req) }),
   )
+}
+
+export async function assistPost(token: string, prefix: string): Promise<PostAssistResponse> {
+  const body: PostAssistRequest = { prefix }
+  const res = await requireOk(
+    await authedFetch(token, '/api/posts/assist', { method: 'POST', body: JSON.stringify(body) }),
+  )
+  return res.json()
 }
 
 export async function uploadMedia(

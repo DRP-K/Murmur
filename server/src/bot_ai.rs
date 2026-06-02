@@ -1,8 +1,10 @@
 use reqwest::Client;
+use serde_json::Value;
 use serde_json::json;
 use tracing::warn;
 
 use crate::auth::user_id_for_pubkey;
+use crate::wire::PostAssistResponse;
 
 #[derive(Clone)]
 pub struct ChatMessage {
@@ -91,11 +93,103 @@ pub async fn generate_welcome(
     call_deepseek_with_history(client, api_key, persona.system_prompt, &history).await
 }
 
+pub async fn generate_post_assist(
+    client: &Client,
+    api_key: &str,
+    outline: &str,
+) -> Option<PostAssistResponse> {
+    let system_prompt = "You expand short post outlines for Murmur, a private social app. \
+        Given the user's rough outline, rewrite the whole post into a natural publishable post. \
+        Also infer a referenced media item only when the post clearly points to a movie, song, album, artist, or game. \
+        Return strict JSON only with keys completed_content, category, media_ref_name. \
+        category must be one of movies, music, games, or null. \
+        media_ref_name must be the exact likely title/name or null. \
+        completed_content must preserve the user's intent, be casual, and be at most 500 characters.";
+    let user_prompt = format!("Post outline: {outline}");
+    let history = [ChatMessage {
+        role: "user",
+        content: user_prompt,
+    }];
+    let text =
+        call_deepseek_with_options(client, api_key, system_prompt, &history, 220, 0.6).await?;
+    sanitize_post_assist_json(outline, &text)
+}
+
+pub fn sanitize_post_assist_json(_outline: &str, text: &str) -> Option<PostAssistResponse> {
+    let value: Value = serde_json::from_str(text)
+        .or_else(|_| {
+            let start = text
+                .find('{')
+                .ok_or(serde_json::Error::io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "missing json object",
+                )))?;
+            let end = text
+                .rfind('}')
+                .ok_or(serde_json::Error::io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "missing json object",
+                )))?;
+            serde_json::from_str(&text[start..=end])
+        })
+        .map_err(|e| warn!(error = %e, "post assist json parse failed"))
+        .ok()?;
+
+    let mut completed = value["completed_content"].as_str()?.trim().to_string();
+    completed = truncate_chars(&completed, 500);
+    if completed.is_empty() {
+        return None;
+    }
+
+    let category = value["category"]
+        .as_str()
+        .map(str::trim)
+        .and_then(|category| match category {
+            "movies" | "music" | "games" => Some(category.to_string()),
+            _ => None,
+        });
+    let media_ref_name = value["media_ref_name"]
+        .as_str()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string);
+    let (category, media_ref_name) = match (category, media_ref_name) {
+        (Some(category), Some(media_ref_name)) => (Some(category), Some(media_ref_name)),
+        _ => (None, None),
+    };
+
+    Some(PostAssistResponse {
+        completed_content: completed,
+        category,
+        media_ref_name,
+    })
+}
+
+fn truncate_chars(value: &str, max_chars: usize) -> String {
+    value
+        .chars()
+        .take(max_chars)
+        .collect::<String>()
+        .trim_end()
+        .to_string()
+}
+
 async fn call_deepseek_with_history(
     client: &Client,
     api_key: &str,
     system_prompt: &str,
     history: &[ChatMessage],
+) -> Option<String> {
+    call_deepseek_with_options(client, api_key, system_prompt, history, 150, 0.8).await
+}
+
+async fn call_deepseek_with_options(
+    client: &Client,
+    api_key: &str,
+    system_prompt: &str,
+    history: &[ChatMessage],
+    max_tokens: u16,
+    temperature: f32,
 ) -> Option<String> {
     let mut messages = vec![json!({"role": "system", "content": system_prompt})];
     for m in history {
@@ -104,8 +198,8 @@ async fn call_deepseek_with_history(
     let body = json!({
         "model": "deepseek-chat",
         "messages": messages,
-        "max_tokens": 150,
-        "temperature": 0.8
+        "max_tokens": max_tokens,
+        "temperature": temperature
     });
 
     let resp = client
@@ -131,4 +225,67 @@ async fn call_deepseek_with_history(
     json["choices"][0]["message"]["content"]
         .as_str()
         .map(str::to_owned)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize_post_assist_json;
+
+    #[test]
+    fn sanitize_post_assist_accepts_allowed_media() {
+        let response = sanitize_post_assist_json(
+            "Recently playing",
+            r#"{"completed_content":"Recently playing Portal 2 again tonight","category":"games","media_ref_name":"Portal 2"}"#,
+        )
+        .expect("response should parse");
+
+        assert_eq!(
+            response.completed_content,
+            "Recently playing Portal 2 again tonight"
+        );
+        assert_eq!(response.category.as_deref(), Some("games"));
+        assert_eq!(response.media_ref_name.as_deref(), Some("Portal 2"));
+    }
+
+    #[test]
+    fn sanitize_post_assist_drops_invalid_media() {
+        let response = sanitize_post_assist_json(
+            "Thinking about",
+            r#"{"completed_content":"Thinking about Portal 2 puzzles","category":"books","media_ref_name":"Portal 2"}"#,
+        )
+        .expect("response should parse");
+
+        assert_eq!(response.category, None);
+        assert_eq!(response.media_ref_name, None);
+    }
+
+    #[test]
+    fn sanitize_post_assist_allows_rewritten_expansion() {
+        let response = sanitize_post_assist_json(
+            "portal puzzles hard",
+            r#"{"completed_content":"Portal 2 has me stuck on one puzzle, but in the best possible way.","category":"games","media_ref_name":"Portal 2"}"#,
+        )
+        .expect("response should parse");
+
+        assert_eq!(
+            response.completed_content,
+            "Portal 2 has me stuck on one puzzle, but in the best possible way."
+        );
+        assert_eq!(response.category.as_deref(), Some("games"));
+        assert_eq!(response.media_ref_name.as_deref(), Some("Portal 2"));
+    }
+
+    #[test]
+    fn sanitize_post_assist_truncates_unicode_safely() {
+        let long_text = format!("我想聊聊{}", "游戏".repeat(300));
+        let payload = serde_json::json!({
+            "completed_content": long_text,
+            "category": null,
+            "media_ref_name": null
+        })
+        .to_string();
+
+        let response = sanitize_post_assist_json("我想", &payload).expect("response should parse");
+        assert_eq!(response.completed_content.chars().count(), 500);
+    }
 }

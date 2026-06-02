@@ -139,6 +139,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/messages/{id}", delete(api::delete_message))
         .route("/api/posts", post(api::post_post).get(api::get_posts))
+        .route("/api/posts/assist", post(api::post_assist))
         .route("/api/posts/ack", post(api::ack_post))
         .route(
             "/api/media",

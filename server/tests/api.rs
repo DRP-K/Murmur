@@ -313,6 +313,52 @@ async fn post_fanout_and_friend_add() {
 }
 
 #[tokio::test]
+async fn post_assist_requires_auth_and_configuration() {
+    let app = app();
+    let alice = test_user(31);
+    register_user(app.clone(), &alice).await;
+    let alice_token = auth_user(app.clone(), &alice).await;
+
+    let unauth = request(
+        app.clone(),
+        "POST",
+        "/api/posts/assist",
+        None,
+        json!({ "prefix": "Recently playing" }),
+    )
+    .await;
+    assert_eq!(unauth.status(), StatusCode::UNAUTHORIZED);
+
+    let unavailable = request(
+        app,
+        "POST",
+        "/api/posts/assist",
+        Some(&alice_token),
+        json!({ "prefix": "Recently playing" }),
+    )
+    .await;
+    assert_eq!(unavailable.status(), StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
+async fn post_assist_rejects_too_short_prefix() {
+    let app = app();
+    let alice = test_user(32);
+    register_user(app.clone(), &alice).await;
+    let alice_token = auth_user(app.clone(), &alice).await;
+
+    let response = request(
+        app,
+        "POST",
+        "/api/posts/assist",
+        Some(&alice_token),
+        json!({ "prefix": "Portal" }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn websocket_live_message_and_sender_ack() {
     let (base, handle) = spawn_server().await;
     let client = reqwest::Client::new();

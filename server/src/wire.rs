@@ -92,7 +92,10 @@ impl From<Post> for ServerEnvelope {
             image_url: value.image_url,
             attachment_url: value.attachment_url,
             attachment_type: value.attachment_type,
-            attachments: value.attachments.as_deref().and_then(|s| serde_json::from_str(s).ok()),
+            attachments: value
+                .attachments
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok()),
         }
     }
 }

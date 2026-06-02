@@ -21,8 +21,8 @@ use crate::db::repository;
 use crate::seed;
 use crate::wire::{
     AckPostRequest, AddFriendRequest, AuthRequest, AuthResponse, CreatePostRequest, FriendInfo,
-    FriendListResponse, MediaUploadResponse, MessageListResponse, PostListResponse,
-    RegisterRequest, SendMessageRequest, ServerEnvelope,
+    FriendListResponse, MediaUploadResponse, MessageListResponse, PostAssistRequest,
+    PostAssistResponse, PostListResponse, RegisterRequest, SendMessageRequest, ServerEnvelope,
 };
 
 #[derive(Debug)]
@@ -32,6 +32,7 @@ pub enum ApiError {
     Forbidden,
     NotFound,
     Conflict(String),
+    ServiceUnavailable(String),
     Internal(String),
 }
 
@@ -48,6 +49,7 @@ impl IntoResponse for ApiError {
             Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden".to_string()),
             Self::NotFound => (StatusCode::NOT_FOUND, "not found".to_string()),
             Self::Conflict(error) => (StatusCode::CONFLICT, error),
+            Self::ServiceUnavailable(error) => (StatusCode::SERVICE_UNAVAILABLE, error),
             Self::Internal(error) => (StatusCode::INTERNAL_SERVER_ERROR, error),
         };
 
@@ -425,6 +427,32 @@ pub async fn post_post(
 
     info!(post_id = %payload.id, "post fanout recorded");
     Ok(StatusCode::ACCEPTED)
+}
+
+pub async fn post_assist(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<PostAssistRequest>,
+) -> Result<Json<PostAssistResponse>, ApiError> {
+    let user_id = authed_user(&headers, &state)?;
+    let prefix = payload.prefix.trim();
+    if prefix.split_whitespace().count() < 2 {
+        return Err(ApiError::BadRequest(
+            "type at least a few words before asking for autocomplete".to_string(),
+        ));
+    }
+
+    let Some(api_key) = state.deepseek_api_key.clone() else {
+        return Err(ApiError::ServiceUnavailable(
+            "post autocomplete is not configured".to_string(),
+        ));
+    };
+
+    let suggestion = bot_ai::generate_post_assist(&state.http_client, &api_key, prefix)
+        .await
+        .ok_or_else(|| ApiError::Internal("post autocomplete failed".to_string()))?;
+    info!(user_id = %user_id, "post autocomplete generated");
+    Ok(Json(suggestion))
 }
 
 pub async fn get_posts(

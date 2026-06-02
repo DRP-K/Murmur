@@ -1,11 +1,11 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { X, Send, ChevronDown, ChevronUp, Sparkles, Paperclip } from 'lucide-react'
+import { X, Send, Sparkles, Paperclip } from 'lucide-react'
 import { db, type LocalTag } from '@/lib/db'
-import { uploadMedia } from '@/lib/relay'
+import { assistPost, uploadMedia } from '@/lib/relay'
 import { useAppStore } from '@/lib/store'
-import { PostSuggestions, type SelectedSuggestion } from './PostSuggestions'
+import { fetchMediaImage, PostSuggestions, type Category, type SelectedSuggestion } from './PostSuggestions'
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024
@@ -34,6 +34,13 @@ const EXPIRY_OPTIONS = [
   { label: '7 days', value: 604800 },
 ]
 
+interface AssistSuggestion {
+  requestedPrefix: string
+  completedContent: string
+  category: Category | null
+  mediaRefName: string | null
+}
+
 export function ComposeSheet({ open, onClose, onSubmit }: Props) {
   const [content, setContent] = useState('')
   const [expirySeconds, setExpirySeconds] = useState<number | null>(null)
@@ -46,15 +53,27 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
   const [mediaCategory, setMediaCategory] = useState<string | null>(null)
   const [mediaRefName, setMediaRefName] = useState<string | null>(null)
   const [mediaImageUrl, setMediaImageUrl] = useState<string | null>(null)
+  const [assistSuggestion, setAssistSuggestion] = useState<AssistSuggestion | null>(null)
+  const [assisting, setAssisting] = useState(false)
+  const [applyingAssistMedia, setApplyingAssistMedia] = useState(false)
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const assistRequestRef = useRef(0)
+  const contentRef = useRef('')
 
   useEffect(() => {
     if (open) db.tags.orderBy('name').toArray().then(setAllTags)
   }, [open])
 
   if (!open) return null
+
+  const ghostSuffix =
+    assistSuggestion &&
+    content.startsWith(assistSuggestion.requestedPrefix) &&
+    assistSuggestion.completedContent.startsWith(content)
+      ? assistSuggestion.completedContent.slice(content.length)
+      : ''
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -87,10 +106,89 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
     setPreviewUrl(null)
   }
 
+  function setContentValue(value: string) {
+    contentRef.current = value
+    setContent(value)
+  }
+
+  function handleContentChange(value: string) {
+    setContentValue(value)
+    setAssistSuggestion((suggestion) => {
+      if (!suggestion) return null
+      if (!suggestion.completedContent.startsWith(value)) return null
+      return suggestion
+    })
+  }
+
+  async function requestAssist() {
+    const prefix = contentRef.current.trim()
+    if (prefix.split(/\s+/).filter(Boolean).length < 2) {
+      setError('Type at least a few words first.')
+      return
+    }
+    const token = useAppStore.getState().token
+    if (!token) {
+      setError('not authenticated')
+      return
+    }
+
+    const requestId = assistRequestRef.current + 1
+    assistRequestRef.current = requestId
+    setAssisting(true)
+    setError(null)
+    try {
+      const suggestion = await assistPost(token, prefix)
+      if (assistRequestRef.current !== requestId) return
+      const current = contentRef.current.trim()
+      if (!current.startsWith(prefix)) return
+      if (!suggestion.completed_content.startsWith(current)) return
+      setAssistSuggestion({
+        requestedPrefix: current,
+        completedContent: suggestion.completed_content,
+        category: suggestion.category,
+        mediaRefName: suggestion.media_ref_name,
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Autocomplete failed')
+    } finally {
+      if (assistRequestRef.current === requestId) setAssisting(false)
+    }
+  }
+
+  function applyAssistText() {
+    if (!assistSuggestion) return
+    setContentValue(assistSuggestion.completedContent)
+    setAssistSuggestion((suggestion) =>
+      suggestion ? { ...suggestion, requestedPrefix: suggestion.completedContent } : null,
+    )
+  }
+
+  async function applyAssistMedia() {
+    if (!assistSuggestion?.category || !assistSuggestion.mediaRefName) return
+    const category = assistSuggestion.category
+    const mediaRefName = assistSuggestion.mediaRefName
+    setMediaCategory(category)
+    setMediaRefName(mediaRefName)
+    setMediaImageUrl(null)
+    setApplyingAssistMedia(true)
+    try {
+      const imageUrl = await fetchMediaImage(category, mediaRefName)
+      setMediaImageUrl(imageUrl)
+    } catch {
+      setMediaImageUrl(null)
+    } finally {
+      setApplyingAssistMedia(false)
+    }
+  }
+
   function toggleTag(tagId: string) {
     setSelectedTagIds((prev) => {
       const next = new Set(prev)
-      next.has(tagId) ? next.delete(tagId) : next.add(tagId)
+      if (next.has(tagId)) {
+        next.delete(tagId)
+      } else {
+        next.add(tagId)
+      }
       return next
     })
   }
@@ -121,13 +219,14 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
       const expiresAt = expirySeconds ? Math.floor(Date.now() / 1000) + expirySeconds : null
       const tagIds = selectedTagIds.size > 0 ? [...selectedTagIds] : null
       await onSubmit(content.trim(), expiresAt, tagIds, mediaCategory, mediaRefName, mediaImageUrl, attachmentUrl, attachmentType)
-      setContent('')
+      setContentValue('')
       setExpirySeconds(null)
       setSelectedTagIds(new Set())
       setAudienceOpen(false)
       setMediaCategory(null)
       setMediaRefName(null)
       setMediaImageUrl(null)
+      setAssistSuggestion(null)
       clearAttachment()
       onClose()
     } catch (err) {
@@ -160,12 +259,42 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
             <textarea
               autoFocus
               value={content}
-              onChange={(e) => setContent(e.target.value)}
+              onChange={(e) => handleContentChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Tab' && ghostSuffix) {
+                  e.preventDefault()
+                  applyAssistText()
+                }
+              }}
               placeholder="What's on your mind?"
               rows={4}
               maxLength={500}
-              className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 pr-10 text-sm text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none"
+              className={`relative w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 pr-20 text-sm leading-normal placeholder-zinc-400 focus:border-zinc-400 focus:outline-none ${
+                ghostSuffix ? 'text-transparent caret-zinc-800' : 'text-zinc-800'
+              }`}
             />
+            {ghostSuffix && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 whitespace-pre-wrap rounded-xl border border-transparent p-3 pr-20 text-sm leading-normal text-zinc-800"
+              >
+                <span>{content}</span>
+                <span className="text-zinc-400">{ghostSuffix}</span>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={requestAssist}
+              disabled={assisting || !content.trim()}
+              title="Autocomplete post"
+              className={`absolute right-10 top-2 rounded-lg px-1.5 py-1 text-[10px] font-semibold transition-colors ${
+                assisting
+                  ? 'bg-zinc-100 text-zinc-400'
+                  : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 disabled:bg-zinc-100 disabled:text-zinc-300'
+              }`}
+            >
+              {assisting ? '...' : 'AI'}
+            </button>
             <button
               type="button"
               onClick={() => setShowSuggestions((v) => !v)}
@@ -179,6 +308,31 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
               <Sparkles size={15} />
             </button>
           </div>
+
+          {(ghostSuffix || (assistSuggestion?.category && assistSuggestion.mediaRefName)) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {ghostSuffix && (
+                <button
+                  type="button"
+                  onClick={applyAssistText}
+                  className="rounded-full bg-zinc-900 px-3 py-1 text-xs font-medium text-white hover:bg-zinc-700"
+                >
+                  Apply autocomplete
+                </button>
+              )}
+              {assistSuggestion?.category && assistSuggestion.mediaRefName && (
+                <button
+                  type="button"
+                  onClick={applyAssistMedia}
+                  disabled={applyingAssistMedia}
+                  className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-200 disabled:opacity-60"
+                >
+                  {CATEGORY_EMOJI[assistSuggestion.category]} {assistSuggestion.mediaRefName}
+                  {applyingAssistMedia ? ' ...' : ''}
+                </button>
+              )}
+            </div>
+          )}
 
           {previewUrl && pendingFile && (
             <div className="relative overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-700">
@@ -221,10 +375,11 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
           {showSuggestions && (
             <PostSuggestions
               onSelect={(s: SelectedSuggestion) => {
-                setContent(s.text)
+                setContentValue(s.text)
                 setMediaCategory(s.category)
                 setMediaRefName(s.mediaRefName)
                 setMediaImageUrl(s.imageUrl)
+                setAssistSuggestion(null)
                 setShowSuggestions(false)
               }}
             />

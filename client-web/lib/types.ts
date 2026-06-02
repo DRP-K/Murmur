@@ -68,6 +68,16 @@ export interface CreatePostRequest {
   attachment_type?: string | null
 }
 
+export interface PostAssistRequest {
+  prefix: string
+}
+
+export interface PostAssistResponse {
+  completed_content: string
+  category: 'movies' | 'music' | 'games' | null
+  media_ref_name: string | null
+}
+
 export interface PostListResponse {
   posts: ServerEnvelope[]
 }

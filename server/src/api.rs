@@ -373,6 +373,10 @@ pub async fn post_post(
         recipients = payload.recipient_ids.len(),
         "post publish requested"
     );
+    let attachments_json: Option<String> = payload
+        .attachments
+        .as_ref()
+        .map(|v| serde_json::to_string(v).unwrap_or_default());
     let post = NewPost {
         id: &payload.id,
         author_id: &author_id,
@@ -384,6 +388,7 @@ pub async fn post_post(
         image_url: payload.image_url.as_deref(),
         attachment_url: payload.attachment_url.as_deref(),
         attachment_type: payload.attachment_type.as_deref(),
+        attachments: attachments_json.as_deref(),
     };
     let recipient_refs: Vec<&str> = payload.recipient_ids.iter().map(String::as_str).collect();
 
@@ -408,6 +413,7 @@ pub async fn post_post(
         image_url: payload.image_url,
         attachment_url: payload.attachment_url,
         attachment_type: payload.attachment_type,
+        attachments: payload.attachments,
     };
 
     for recipient_id in payload.recipient_ids {

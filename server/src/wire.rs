@@ -2,6 +2,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::db::models::{PendingMessage, Post};
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MediaItem {
+    pub url: String,
+    pub media_type: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct RegisterRequest {
     pub user_id: String,
@@ -54,6 +60,7 @@ pub enum ServerEnvelope {
         image_url: Option<String>,
         attachment_url: Option<String>,
         attachment_type: Option<String>,
+        attachments: Option<Vec<MediaItem>>,
     },
     #[serde(rename = "delivered_ack")]
     DeliveredAck { id: String },
@@ -85,6 +92,10 @@ impl From<Post> for ServerEnvelope {
             image_url: value.image_url,
             attachment_url: value.attachment_url,
             attachment_type: value.attachment_type,
+            attachments: value
+                .attachments
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok()),
         }
     }
 }
@@ -106,6 +117,7 @@ pub struct CreatePostRequest {
     pub image_url: Option<String>,
     pub attachment_url: Option<String>,
     pub attachment_type: Option<String>,
+    pub attachments: Option<Vec<MediaItem>>,
 }
 
 #[derive(Debug, Deserialize)]

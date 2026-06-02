@@ -428,6 +428,7 @@ mod tests {
             media_ref_name: None,
             attachment_url: None,
             attachment_type: None,
+            attachments: None,
         };
 
         let inserted_deliveries = create_post_with_deliveries(&mut conn, &post, &["u2", "u3"])
@@ -462,6 +463,7 @@ mod tests {
             media_ref_name: None,
             attachment_url: None,
             attachment_type: None,
+            attachments: None,
         };
         let expired = NewPost {
             id: "expired",
@@ -474,6 +476,7 @@ mod tests {
             media_ref_name: None,
             attachment_url: None,
             attachment_type: None,
+            attachments: None,
         };
 
         create_post_with_deliveries(&mut conn, &fresh, &["u2"]).expect("fresh fan-out should work");

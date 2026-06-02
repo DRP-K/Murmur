@@ -23,6 +23,7 @@ interface Props {
     mediaRefName?: string | null,
     imageUrl?: string | null,
     attachments?: MediaItem[] | null,
+    scheduledAt?: number | null,
   ) => Promise<void>
 }
 
@@ -58,6 +59,8 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
   const [applyingAssistMedia, setApplyingAssistMedia] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
+  const [scheduleMode, setScheduleMode] = useState<'now' | '+1h' | '+4h' | '+1d' | 'custom'>('now')
+  const [customSchedule, setCustomSchedule] = useState<string>('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const assistRequestRef = useRef(0)
   const contentRef = useRef('')
@@ -117,6 +120,18 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
   function setContentValue(value: string) {
     contentRef.current = value
     setContent(value)
+  }
+
+  function resolveScheduledAt(): number | null {
+    const now = Math.floor(Date.now() / 1000)
+    if (scheduleMode === '+1h') return now + 3600
+    if (scheduleMode === '+4h') return now + 4 * 3600
+    if (scheduleMode === '+1d') return now + 86400
+    if (scheduleMode === 'custom' && customSchedule) {
+      const t = Math.floor(new Date(customSchedule).getTime() / 1000)
+      return t > now ? t : null
+    }
+    return null
   }
 
   function handleContentChange(value: string) {
@@ -231,7 +246,8 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
 
       const expiresAt = expirySeconds ? Math.floor(Date.now() / 1000) + expirySeconds : null
       const tagIds = selectedTagIds.size > 0 ? [...selectedTagIds] : null
-      await onSubmit(content.trim(), expiresAt, tagIds, mediaCategory, mediaRefName, mediaImageUrl, attachments)
+      const scheduledAt = resolveScheduledAt()
+      await onSubmit(content.trim(), expiresAt, tagIds, mediaCategory, mediaRefName, mediaImageUrl, attachments, scheduledAt)
       setContentValue('')
       setExpirySeconds(null)
       setSelectedTagIds(new Set())
@@ -243,6 +259,8 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
       previewUrls.forEach((u) => URL.revokeObjectURL(u))
       setPendingFiles([])
       setPreviewUrls([])
+      setScheduleMode('now')
+      setCustomSchedule('')
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to post')
@@ -410,6 +428,44 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
             </div>
 
             <span className="text-xs text-zinc-400">{content.length}/500</span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-zinc-400">Send:</span>
+            {(['now', '+1h', '+4h', '+1d'] as const).map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => { setScheduleMode(opt); setCustomSchedule('') }}
+                className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                  scheduleMode === opt
+                    ? 'bg-zinc-900 text-white'
+                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                }`}
+              >
+                {opt === 'now' ? 'Now' : opt}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setScheduleMode('custom')}
+              className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                scheduleMode === 'custom'
+                  ? 'bg-zinc-900 text-white'
+                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+              }`}
+            >
+              Custom
+            </button>
+            {scheduleMode === 'custom' && (
+              <input
+                type="datetime-local"
+                value={customSchedule}
+                min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
+                onChange={(e) => setCustomSchedule(e.target.value)}
+                className="rounded-lg border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600 focus:outline-none"
+              />
+            )}
           </div>
 
           {error && <p className="text-xs text-red-500">{error}</p>}

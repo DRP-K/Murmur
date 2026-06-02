@@ -198,7 +198,11 @@ pub fn list_pending_posts(
         .filter(post_deliveries::recipient_id.eq(recipient_id))
         .filter(post_deliveries::delivered_at.is_null())
         .filter(posts::expires_at.is_null().or(posts::expires_at.gt(now)))
-        .filter(posts::scheduled_at.is_null().or(posts::scheduled_at.le(now)))
+        .filter(
+            posts::scheduled_at
+                .is_null()
+                .or(posts::scheduled_at.le(now)),
+        )
         .select(Post::as_select())
         .order(posts::timestamp.asc())
         .load(conn)
@@ -589,7 +593,10 @@ mod tests {
             .expect("fanout");
 
         let posts = list_pending_posts(&mut conn, "u2", 1_500).expect("list");
-        assert!(posts.is_empty(), "post should not appear before scheduled_at");
+        assert!(
+            posts.is_empty(),
+            "post should not appear before scheduled_at"
+        );
     }
 
     #[test]

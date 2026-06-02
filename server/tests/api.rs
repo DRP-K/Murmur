@@ -813,13 +813,19 @@ async fn scheduled_post_is_hidden_until_due() {
     .await;
     assert_eq!(resp.status(), StatusCode::ACCEPTED);
 
-    let body = request(app.clone(), "GET", "/api/posts", Some(&bob_token), json!({}))
-        .await
-        .into_body()
-        .collect()
-        .await
-        .expect("body")
-        .to_bytes();
+    let body = request(
+        app.clone(),
+        "GET",
+        "/api/posts",
+        Some(&bob_token),
+        json!({}),
+    )
+    .await
+    .into_body()
+    .collect()
+    .await
+    .expect("body")
+    .to_bytes();
     let pulled: Value = serde_json::from_slice(&body).expect("posts response");
     let ids: Vec<&str> = pulled["posts"]
         .as_array()
@@ -827,7 +833,10 @@ async fn scheduled_post_is_hidden_until_due() {
         .iter()
         .filter_map(|p| p["id"].as_str())
         .collect();
-    assert!(!ids.contains(&"sched-future"), "future-scheduled post must not appear before due");
+    assert!(
+        !ids.contains(&"sched-future"),
+        "future-scheduled post must not appear before due"
+    );
 
     // Post scheduled 10 seconds ago — Bob should see it immediately via HTTP pull.
     let resp = request(
@@ -847,13 +856,19 @@ async fn scheduled_post_is_hidden_until_due() {
     .await;
     assert_eq!(resp.status(), StatusCode::ACCEPTED);
 
-    let body = request(app.clone(), "GET", "/api/posts", Some(&bob_token), json!({}))
-        .await
-        .into_body()
-        .collect()
-        .await
-        .expect("body")
-        .to_bytes();
+    let body = request(
+        app.clone(),
+        "GET",
+        "/api/posts",
+        Some(&bob_token),
+        json!({}),
+    )
+    .await
+    .into_body()
+    .collect()
+    .await
+    .expect("body")
+    .to_bytes();
     let pulled: Value = serde_json::from_slice(&body).expect("posts response");
     let ids: Vec<&str> = pulled["posts"]
         .as_array()
@@ -861,8 +876,14 @@ async fn scheduled_post_is_hidden_until_due() {
         .iter()
         .filter_map(|p| p["id"].as_str())
         .collect();
-    assert!(ids.contains(&"sched-past"), "past-scheduled post should appear after due time");
-    assert!(!ids.contains(&"sched-future"), "future-scheduled post must still not appear");
+    assert!(
+        ids.contains(&"sched-past"),
+        "past-scheduled post should appear after due time"
+    );
+    assert!(
+        !ids.contains(&"sched-future"),
+        "future-scheduled post must still not appear"
+    );
 }
 
 #[tokio::test]
@@ -919,17 +940,22 @@ async fn scheduler_tick_pushes_due_post_to_online_recipient() {
         .iter()
         .filter_map(|p| p["id"].as_str())
         .collect();
-    assert!(!ids.contains(&"sched-tick"), "future-scheduled post must not appear in pull");
+    assert!(
+        !ids.contains(&"sched-tick"),
+        "future-scheduled post must not appear in pull"
+    );
 
     // Simulate the scheduled time arriving: update the post's scheduled_at to the past
     // via the DB pool, then run a scheduler tick.
     {
         let mut conn = state.pool.get().expect("pool connection");
-        diesel::update(murmur_server::db::schema::posts::table
-            .filter(murmur_server::db::schema::posts::id.eq("sched-tick")))
-            .set(murmur_server::db::schema::posts::scheduled_at.eq(chrono::Utc::now().timestamp() - 1))
-            .execute(&mut conn)
-            .expect("update scheduled_at");
+        diesel::update(
+            murmur_server::db::schema::posts::table
+                .filter(murmur_server::db::schema::posts::id.eq("sched-tick")),
+        )
+        .set(murmur_server::db::schema::posts::scheduled_at.eq(chrono::Utc::now().timestamp() - 1))
+        .execute(&mut conn)
+        .expect("update scheduled_at");
     }
 
     scheduler_tick(&state).await;

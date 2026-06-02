@@ -96,9 +96,9 @@ export async function getMessages(token: string): Promise<MessageListResponse> {
 }
 
 export async function ackMessage(token: string, messageId: string): Promise<void> {
-  await requireOk(
-    await authedFetch(token, `/api/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE' }),
-  )
+  const res = await authedFetch(token, `/api/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE' })
+  if (res.status === 404) return // already acked — idempotent
+  await requireOk(res)
 }
 
 export async function createPost(token: string, req: CreatePostRequest): Promise<void> {
@@ -154,6 +154,17 @@ export async function addFriend(token: string, friendId: string): Promise<void> 
 export async function getFriends(token: string): Promise<FriendListResponse> {
   const res = await requireOk(await authedFetch(token, '/api/friends'))
   return res.json()
+}
+
+export async function createInviteToken(token: string): Promise<{ code: string; expires_at: number }> {
+  const res = await requireOk(await authedFetch(token, '/api/invite-token', { method: 'POST' }))
+  return res.json()
+}
+
+export async function redeemInviteToken(token: string, code: string): Promise<void> {
+  await requireOk(
+    await authedFetch(token, '/api/friends/by-token', { method: 'POST', body: JSON.stringify({ code }) }),
+  )
 }
 
 // Converts http(s) base URL to ws(s) for WebSocket connection.

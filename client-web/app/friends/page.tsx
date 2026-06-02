@@ -1,18 +1,17 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { QRCodeCanvas } from 'qrcode.react'
-import { ArrowLeft, Copy, Check, UserPlus, Hash } from 'lucide-react'
+import { ArrowLeft, UserPlus } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { ecdh } from '@/lib/crypto'
-import { addFriend } from '@/lib/relay'
+import { addFriend, createInviteToken, redeemInviteToken } from '@/lib/relay'
 import { db } from '@/lib/db'
 import { QrScanner } from '@/components/QrScanner'
-import { FriendSetupModal } from '@/components/FriendSetupModal'
 import type { QrPayload } from '@/lib/types'
 
-type Tab = 'my-qr' | 'scan' | 'by-id'
+type Tab = 'my-qr' | 'scan' | 'token'
 
 export default function FriendsPage() {
   const bootstrapped = useAppStore((s) => s.bootstrapped)
@@ -20,18 +19,21 @@ export default function FriendsPage() {
   const userId = useAppStore((s) => s.userId)
   const pubkeyHex = useAppStore((s) => s.pubkeyHex)
   const token = useAppStore((s) => s.token)
+  const pushFriendSetup = useAppStore((s) => s.pushFriendSetup)
   const router = useRouter()
 
   const [tab, setTab] = useState<Tab>('my-qr')
-  const [copied, setCopied] = useState(false)
   const [scanResult, setScanResult] = useState<QrPayload | null>(null)
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [setupFriend, setSetupFriend] = useState<{ friendId: string; nickname: string | null; metAtEvent: string | null } | null>(null)
 
-  // Manual "add by ID" fields.
-  const [manualId, setManualId] = useState('')
-  const [manualPubkey, setManualPubkey] = useState('')
+  // Token tab state.
+  const [inviteCode, setInviteCode] = useState<string | null>(null)
+  const [inviteExpiresAt, setInviteExpiresAt] = useState<number | null>(null)
+  const [countdown, setCountdown] = useState(0)
+  const [generatingCode, setGeneratingCode] = useState(false)
+  const [redeemInput, setRedeemInput] = useState('')
+  const [redeeming, setRedeeming] = useState(false)
 
   // QR payload for others to scan me.
   const myQrPayload: QrPayload = useMemo(
@@ -45,12 +47,19 @@ export default function FriendsPage() {
   )
   const myQrJson = JSON.stringify(myQrPayload)
 
-  async function copyId() {
-    if (!userId) return
-    await navigator.clipboard.writeText(userId)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
+  // Countdown timer for invite code.
+  useEffect(() => {
+    if (!inviteExpiresAt) return
+    const interval = setInterval(() => {
+      const remaining = Math.max(0, inviteExpiresAt - Math.floor(Date.now() / 1000))
+      setCountdown(remaining)
+      if (remaining === 0) {
+        setInviteCode(null)
+        setInviteExpiresAt(null)
+      }
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [inviteExpiresAt])
 
   function handleScan(payload: QrPayload) {
     setScanResult(payload)
@@ -90,9 +99,7 @@ export default function FriendsPage() {
       console.log('[friends] relay addFriend OK')
 
       setScanResult(null)
-      setManualId('')
-      setManualPubkey('')
-      setSetupFriend({ friendId, nickname, metAtEvent })
+      pushFriendSetup({ friendId, nickname, metAtEvent })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add friend')
     } finally {
@@ -110,12 +117,38 @@ export default function FriendsPage() {
     )
   }
 
-  function handleAddById(e: React.FormEvent) {
+  async function generateToken() {
+    if (!token) return
+    setGeneratingCode(true)
+    setError(null)
+    try {
+      const resp = await createInviteToken(token)
+      setInviteCode(resp.code)
+      setInviteExpiresAt(resp.expires_at)
+      setCountdown(Math.max(0, resp.expires_at - Math.floor(Date.now() / 1000)))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate code')
+    } finally {
+      setGeneratingCode(false)
+    }
+  }
+
+  async function handleRedeem(e: React.FormEvent) {
     e.preventDefault()
-    const id = manualId.trim()
-    const pk = manualPubkey.trim()
-    if (!id || !pk) { setError('User ID and pubkey are required'); return }
-    doAddFriend(id, pk, null, null)
+    const code = redeemInput.trim()
+    if (!token || code.length !== 6) { setError('Enter the 6-digit code'); return }
+    setRedeeming(true)
+    setError(null)
+    try {
+      await redeemInviteToken(token, code)
+      setRedeemInput('')
+      // The server sends friend_added WS messages to both parties;
+      // useFriendSink processes them and saves to Dexie automatically.
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid or expired code')
+    } finally {
+      setRedeeming(false)
+    }
   }
 
   if (!bootstrapped) {
@@ -149,7 +182,7 @@ export default function FriendsPage() {
       <div className="flex border-b border-zinc-200 bg-white">
         <button onClick={() => setTab('my-qr')} className={tabClass('my-qr')}>My QR</button>
         <button onClick={() => setTab('scan')} className={tabClass('scan')}>Scan</button>
-        <button onClick={() => setTab('by-id')} className={tabClass('by-id')}>By ID</button>
+        <button onClick={() => setTab('token')} className={tabClass('token')}>Token</button>
       </div>
 
       <main className="flex flex-1 flex-col items-center px-4 py-8">
@@ -159,22 +192,6 @@ export default function FriendsPage() {
             <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
               <QRCodeCanvas value={myQrJson} size={200} level="M" fgColor="currentColor"
                 className="text-zinc-900" includeMargin />
-            </div>
-            <div className="mt-6 w-full max-w-xs">
-              <p className="mb-2 text-center text-xs text-zinc-400">Your ID:</p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 truncate rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-600">
-                  {userId}
-                </code>
-                <button onClick={copyId}
-                  className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 hover:border-zinc-400">
-                  {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
-                </button>
-              </div>
-              <button onClick={copyId}
-                className="mt-3 w-full rounded-full border border-zinc-200 py-2 text-sm text-zinc-600 hover:border-zinc-400">
-                Copy ID
-              </button>
             </div>
           </>
         )}
@@ -198,40 +215,53 @@ export default function FriendsPage() {
           </>
         )}
 
-        {tab === 'by-id' && (
-          <form onSubmit={handleAddById} className="w-full max-w-xs">
-            <p className="mb-4 text-xs text-zinc-400">
-              Paste your friend&apos;s User ID and public key (from their Me page).
-            </p>
+        {tab === 'token' && (
+          <div className="w-full max-w-xs space-y-8">
+            {/* Generate section */}
+            <div>
+              <p className="mb-4 text-xs text-zinc-400">Share this code with your friend:</p>
+              {inviteCode ? (
+                <div className="flex flex-col items-center gap-3">
+                  <code className="rounded-2xl border border-zinc-200 bg-white px-6 py-4 text-5xl font-mono tracking-widest text-zinc-900 shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100">
+                    {inviteCode}
+                  </code>
+                  <p className="text-xs text-zinc-400">Expires in {countdown}s</p>
+                  <button onClick={generateToken} disabled={generatingCode}
+                    className="text-xs text-zinc-400 underline hover:text-zinc-600 disabled:opacity-40">
+                    Regenerate
+                  </button>
+                </div>
+              ) : (
+                <button onClick={generateToken} disabled={generatingCode}
+                  className="w-full rounded-full bg-zinc-900 py-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-40 dark:bg-white dark:text-zinc-900">
+                  {generatingCode ? 'Generating…' : 'Generate Code'}
+                </button>
+              )}
+            </div>
 
-            <label className="mb-1 block text-xs font-medium text-zinc-500">User ID</label>
-            <input value={manualId} onChange={(e) => setManualId(e.target.value)}
-              placeholder="e.g. a3f9c7b2..."
-              className="mb-3 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none" />
+            {/* Redeem section */}
+            <form onSubmit={handleRedeem}>
+              <p className="mb-4 text-xs text-zinc-400">Or enter your friend&apos;s code:</p>
+              <input
+                value={redeemInput}
+                onChange={(e) => setRedeemInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                maxLength={6}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                placeholder="000000"
+                className="mb-3 w-full rounded-lg border border-zinc-200 bg-white px-3 py-3 text-center text-2xl font-mono tracking-widest text-zinc-800 placeholder-zinc-300 focus:border-zinc-400 focus:outline-none"
+              />
+              <button type="submit" disabled={redeeming || redeemInput.length !== 6}
+                className="flex w-full items-center justify-center gap-2 rounded-full bg-zinc-900 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-40">
+                <UserPlus size={14} />{redeeming ? 'Adding…' : 'Add Friend'}
+              </button>
+            </form>
 
-            <label className="mb-1 block text-xs font-medium text-zinc-500">Public key (hex)</label>
-            <input value={manualPubkey} onChange={(e) => setManualPubkey(e.target.value)}
-              placeholder="Ed25519 pubkey in hex..."
-              className="mb-3 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none" />
-
-            <button type="submit" disabled={adding}
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-zinc-900 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-40">
-              <Hash size={14} />{adding ? 'Adding…' : 'Add by ID'}
-            </button>
-
-            {error && <p className="mt-4 text-xs text-red-500">{error}</p>}
-          </form>
+            {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
+          </div>
         )}
       </main>
 
-      {setupFriend && (
-        <FriendSetupModal
-          friendId={setupFriend.friendId}
-          initialNickname={setupFriend.nickname}
-          initialMetAtEvent={setupFriend.metAtEvent}
-          onDone={() => setSetupFriend(null)}
-        />
-      )}
     </>
   )
 }

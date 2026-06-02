@@ -59,6 +59,12 @@ function postsMatch(a: Post, b: Post): boolean {
   )
 }
 
+export interface FriendSetupEntry {
+  friendId: string
+  nickname: string | null
+  metAtEvent: string | null
+}
+
 interface AppState {
   userId: string | null
   pubkeyHex: string | null
@@ -69,6 +75,7 @@ interface AppState {
   posts: Post[]
   messagesByConv: Record<string, LocalMessage[]>
   conversations: Record<string, ConversationMeta>
+  pendingFriendSetups: FriendSetupEntry[]
 }
 
 interface AppActions {
@@ -91,6 +98,8 @@ interface AppActions {
     friendName?: string
   }) => void
   clearUnread: (convId: string) => void
+  pushFriendSetup: (entry: FriendSetupEntry) => void
+  popFriendSetup: () => void
 }
 
 export type AppStore = AppState & AppActions
@@ -105,6 +114,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   posts: [],
   messagesByConv: {},
   conversations: {},
+  pendingFriendSetups: [],
 
   setSession: (userId, pubkeyHex, token) => set({ userId, pubkeyHex, token }),
   setToken: (token) => set({ token }),
@@ -317,4 +327,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const conv = get().conversations[convId]
     if (conv) db.conversations.put(conv).catch(console.error)
   },
+
+  pushFriendSetup: (entry) =>
+    set((state) => ({ pendingFriendSetups: [...state.pendingFriendSetups, entry] })),
+
+  popFriendSetup: () =>
+    set((state) => ({ pendingFriendSetups: state.pendingFriendSetups.slice(1) })),
 }))

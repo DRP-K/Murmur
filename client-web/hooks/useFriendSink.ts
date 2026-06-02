@@ -30,10 +30,12 @@ export async function processFriendAdded(
   console.log('[friend_sink] parsed friendId=', friendId.slice(0, 8), 'pubkey len=', friendPubkey.length)
   if (!friendId || !friendPubkey) return
 
-  // Already known?
+  // Already known? Still ack so the server stops re-delivering.
   const existing = await db.friends.get(friendId)
   if (existing) {
     console.log('[friend_sink] friend already exists in Dexie, skipping')
+    const tok = useAppStore.getState().token
+    if (tok) ackMessage(tok, env.id).catch(() => {/* already acked — ignore */})
     return
   }
 
@@ -53,6 +55,14 @@ export async function processFriendAdded(
     blockedAt: null,
   })
   console.log('[friend_sink] friend stored in Dexie:', friendId.slice(0, 8))
+
+  if (!env.id.startsWith('seed:')) {
+    useAppStore.getState().pushFriendSetup({
+      friendId,
+      nickname: nickname ?? null,
+      metAtEvent: met_at_event ?? null,
+    })
+  }
 
   const tok = useAppStore.getState().token
   if (tok) ackMessage(tok, env.id).catch(console.error)

@@ -117,37 +117,45 @@ export default function MePage() {
           </div>
         </div>
 
-        {/* User ID */}
-        <div className="rounded-xl border border-zinc-200 bg-white p-4">
-          <p className="mb-2 text-xs font-medium text-zinc-500">Your ID</p>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 break-all text-xs text-zinc-600">
-              {userId}
-            </code>
-            <button
-              onClick={copyId}
-              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 hover:border-zinc-400"
-            >
-              {copiedId ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
-            </button>
-          </div>
-        </div>
+        {/* Advanced: raw cryptographic identifiers */}
+        <details className="rounded-xl border border-zinc-200 bg-white p-4">
+          <summary className="cursor-pointer select-none text-xs font-medium text-zinc-400">
+            Advanced
+          </summary>
+          <div className="mt-4 space-y-4">
+            {/* User ID */}
+            <div>
+              <p className="mb-2 text-xs font-medium text-zinc-500">Your ID</p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 break-all text-xs text-zinc-600">
+                  {userId}
+                </code>
+                <button
+                  onClick={copyId}
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 hover:border-zinc-400"
+                >
+                  {copiedId ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                </button>
+              </div>
+            </div>
 
-        {/* Pubkey */}
-        <div className="rounded-xl border border-zinc-200 bg-white p-4">
-          <p className="mb-2 text-xs font-medium text-zinc-500">Public key (Ed25519)</p>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 break-all text-[10px] text-zinc-400">
-              {pubkeyHex}
-            </code>
-            <button
-              onClick={copyPubkey}
-              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 hover:border-zinc-400"
-            >
-              {copiedPubkey ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
-            </button>
+            {/* Pubkey */}
+            <div>
+              <p className="mb-2 text-xs font-medium text-zinc-500">Public key (Ed25519)</p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 break-all text-[10px] text-zinc-400">
+                  {pubkeyHex}
+                </code>
+                <button
+                  onClick={copyPubkey}
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 hover:border-zinc-400"
+                >
+                  {copiedPubkey ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
+        </details>
 
         {/* App info */}
         <div className="mt-auto rounded-xl border border-zinc-200 bg-white p-4">

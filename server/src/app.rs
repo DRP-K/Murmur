@@ -165,6 +165,30 @@ impl AppState {
     }
 }
 
+pub async fn scheduler_tick(state: &AppState) {
+    let now = crate::api::now_ts();
+    debug!("scheduler tick at {now}");
+    let deliveries = state.pool.get().ok().and_then(|mut conn| {
+        crate::db::repository::list_due_scheduled_deliveries(&mut conn, now).ok()
+    });
+    if let Some(deliveries) = deliveries {
+        for (post, recipient_id) in deliveries {
+            info!(post_id = %post.id, recipient_id = %recipient_id, "scheduler dispatching due post");
+            state.send_to_online(&recipient_id, ServerEnvelope::from(post));
+        }
+    }
+}
+
+pub fn start_scheduler(state: AppState) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        loop {
+            interval.tick().await;
+            scheduler_tick(&state).await;
+        }
+    });
+}
+
 pub fn router(state: AppState) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)

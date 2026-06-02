@@ -41,6 +41,7 @@ diesel::table! {
         attachment_url -> Nullable<Text>,
         attachment_type -> Nullable<Text>,
         attachments -> Nullable<Text>,
+        scheduled_at -> Nullable<BigInt>,
     }
 }
 

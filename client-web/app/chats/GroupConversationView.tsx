@@ -119,6 +119,10 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
   }
 
   const railOffset = embedded ? '' : 'md:ml-20 landscape:ml-20'
+  const mobileComposerOffset = embedded
+    ? ''
+    : 'fixed bottom-[52px] left-1/2 z-20 w-full max-w-md -translate-x-1/2 md:static md:max-w-none md:translate-x-0 landscape:static landscape:max-w-none landscape:translate-x-0'
+  const messageBottomPadding = embedded ? '' : 'pb-28 md:pb-4 landscape:pb-4'
   const title = group?.title || 'Group'
   const memberText = group ? `${group.members.length}/${group.maxMembers}` : ''
 
@@ -142,7 +146,7 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
         </div>
       </header>
 
-      <main className={`flex flex-1 flex-col gap-2 overflow-y-auto p-4 ${railOffset}`}>
+      <main className={`flex flex-1 flex-col gap-2 overflow-y-auto p-4 ${messageBottomPadding} ${railOffset}`}>
         {messages.map((m) => (
           <MessageBubble
             key={m.id}
@@ -158,7 +162,7 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
 
       <form
         onSubmit={handleSend}
-        className={`flex items-end gap-2 border-t border-zinc-200 bg-white p-4 ${railOffset}`}
+        className={`flex items-end gap-2 border-t border-zinc-200 bg-white p-4 ${mobileComposerOffset} ${railOffset}`}
       >
         <textarea
           value={input}

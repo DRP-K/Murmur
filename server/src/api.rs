@@ -582,7 +582,21 @@ pub async fn join_group(
     if inserted {
         info!(group_id = %group_id, user_id = %user_id, "user joined group");
     }
-    Ok(Json(GroupInfo::from_group(group, members)))
+    let group_info = GroupInfo::from_group(group, members);
+    if inserted {
+        for member in &group_info.members {
+            if member.user_id == user_id {
+                continue;
+            }
+            state.send_to_online(
+                &member.user_id,
+                ServerEnvelope::GroupUpdate {
+                    group: group_info.clone(),
+                },
+            );
+        }
+    }
+    Ok(Json(group_info))
 }
 
 pub async fn get_group_messages(

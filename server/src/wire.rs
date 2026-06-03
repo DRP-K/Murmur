@@ -73,6 +73,8 @@ pub enum ServerEnvelope {
         payload_hex: String,
         sent_at: i64,
     },
+    #[serde(rename = "group_update")]
+    GroupUpdate { group: GroupInfo },
     #[serde(rename = "delivered_ack")]
     DeliveredAck { id: String },
 }
@@ -194,13 +196,13 @@ pub struct AckGroupMessageRequest {
     pub message_id: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct GroupMemberInfo {
     pub user_id: String,
     pub joined_at: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct GroupInfo {
     pub id: String,
     pub creator_id: String,

@@ -9,11 +9,17 @@ import type { ServerEnvelope } from '@/lib/types'
 
 export function useGroupSink() {
   const addGroupMessage = useAppStore((s) => s.addGroupMessage)
+  const upsertGroup = useAppStore((s) => s.upsertGroup)
 
   useEffect(() => {
     const acking = new Set<string>()
 
     return ws.subscribe((env: ServerEnvelope) => {
+      if (env.type === 'group_update') {
+        upsertGroup(env.group)
+        return
+      }
+
       if (env.type !== 'group_message') return
       const myId = useAppStore.getState().userId
       if (!myId) return
@@ -35,5 +41,5 @@ export function useGroupSink() {
         .catch(() => {})
         .finally(() => acking.delete(env.id))
     })
-  }, [addGroupMessage])
+  }, [addGroupMessage, upsertGroup])
 }

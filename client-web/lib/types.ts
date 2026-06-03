@@ -42,6 +42,10 @@ export type ServerEnvelope =
       payload_hex: string
       sent_at: number
     }
+  | {
+      type: 'group_update'
+      group: GroupInfo
+    }
   | { type: 'delivered_ack'; id: string }
 
 export interface RegisterRequest {

@@ -493,6 +493,68 @@ async fn rally_post_creates_group_and_group_messages_flow() {
 }
 
 #[tokio::test]
+async fn group_join_pushes_member_count_update_to_online_members() {
+    let (base, handle) = spawn_server().await;
+    let client = reqwest::Client::new();
+    let alice = test_user(73);
+    let bob = test_user(74);
+    register_user_http(&client, &base, &alice).await;
+    register_user_http(&client, &base, &bob).await;
+    let alice_token = auth_user_http(&client, &base, &alice).await;
+    let bob_token = auth_user_http(&client, &base, &bob).await;
+
+    let create = client
+        .post(format!("{base}/api/posts"))
+        .bearer_auth(&alice_token)
+        .json(&json!({
+            "id": "rally-update-post",
+            "content": "Join this lobby",
+            "timestamp": 1000,
+            "expires_at": null,
+            "recipient_ids": [bob.user_id],
+            "rally": { "group_id": "group-update", "max_members": 4 },
+        }))
+        .send()
+        .await
+        .expect("post request");
+    assert_eq!(create.status(), StatusCode::ACCEPTED);
+
+    let ws_base = base.replace("http://", "ws://");
+    let (mut alice_ws, _) = connect_async(format!("{ws_base}/api/ws?token={alice_token}"))
+        .await
+        .expect("alice ws should connect");
+
+    let join = client
+        .post(format!("{base}/api/groups/group-update/join"))
+        .bearer_auth(&bob_token)
+        .send()
+        .await
+        .expect("join request");
+    assert_eq!(join.status(), StatusCode::OK);
+
+    let update = loop {
+        let msg = timeout(Duration::from_secs(2), alice_ws.next())
+            .await
+            .expect("alice should receive group update")
+            .expect("alice stream should be open")
+            .expect("message ok");
+        let Message::Text(text) = msg else { continue };
+        let env: ServerEnvelope = serde_json::from_str(&text).expect("envelope parses");
+        if matches!(&env, ServerEnvelope::GroupUpdate { group } if group.id == "group-update") {
+            break env;
+        }
+    };
+
+    let ServerEnvelope::GroupUpdate { group } = update else {
+        panic!("expected group update");
+    };
+    assert_eq!(group.members.len(), 2);
+
+    alice_ws.close(None).await.expect("close");
+    handle.abort();
+}
+
+#[tokio::test]
 async fn post_assist_requires_auth_and_configuration() {
     let app = app();
     let alice = test_user(31);

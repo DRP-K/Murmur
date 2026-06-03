@@ -80,6 +80,7 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
     assistSuggestion && assistSuggestion.completedContent !== content
       ? assistSuggestion.completedContent
       : ''
+  const canRephrase = content.trim().split(/\s+/).filter(Boolean).length >= 2
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     if (!fileInputRef.current) return
@@ -344,12 +345,14 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
               <button
                 type="button"
                 onClick={requestAssist}
-                disabled={assisting || !content.trim()}
+                disabled={assisting || !canRephrase}
                 title="Rephrase post"
                 className={`rounded-lg border px-2 py-1 text-[10px] font-semibold transition-colors ${
                   assisting
                     ? 'border-zinc-200 bg-zinc-100 text-zinc-400'
-                    : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-300'
+                    : canRephrase
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                      : 'border-zinc-200 bg-zinc-100 text-zinc-300'
                 }`}
               >
                 {assisting ? '...' : 'Rephrase'}

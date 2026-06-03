@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, Send, Users } from 'lucide-react'
+import { ArrowLeft, Send, X, Users } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { ackGroupMessage, getGroupMessages, sendGroupMessage } from '@/lib/relay'
 import { decodePayload, encodePayload } from '@/lib/crypto'
@@ -130,11 +130,9 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
   return (
     <>
       <header className={`flex items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur ${railOffset}`}>
-        {!embedded && (
-          <button onClick={() => router.push('/chats')} className="text-zinc-500 hover:text-zinc-800">
-            <ArrowLeft size={20} />
-          </button>
-        )}
+        <button onClick={() => router.push('/chats')} className="text-zinc-500 hover:text-zinc-800">
+          {embedded ? <X size={20} /> : <ArrowLeft size={20} />}
+        </button>
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
           <Users size={16} />
         </div>
@@ -181,7 +179,7 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
         </button>
       </form>
 
-      {!embedded && <TabBar sideOnly />}
+      {!embedded && <TabBar />}
     </>
   )
 }

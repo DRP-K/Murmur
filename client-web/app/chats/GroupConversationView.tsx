@@ -1,14 +1,14 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { ArrowLeft, Send, X, Users } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { ackGroupMessage, getGroupMessages, sendGroupMessage } from '@/lib/relay'
 import { decodePayload, encodePayload } from '@/lib/crypto'
 import { db } from '@/lib/db'
 import { MessageBubble } from '@/components/MessageBubble'
-import { TabBar } from '@/components/TabBar'
 
 interface GroupConversationPageProps {
   groupId?: string | null
@@ -26,7 +26,6 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
   const groupMessagesByGroup = useAppStore((s) => s.groupMessagesByGroup)
   const addGroupMessage = useAppStore((s) => s.addGroupMessage)
   const clearGroupUnread = useAppStore((s) => s.clearGroupUnread)
-  const router = useRouter()
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [friendNames, setFriendNames] = useState<Record<string, string>>({})
@@ -121,8 +120,8 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
   const railOffset = embedded ? '' : 'md:ml-20 landscape:ml-20'
   const mobileComposerOffset = embedded
     ? ''
-    : 'fixed bottom-[52px] left-1/2 z-20 w-full max-w-md -translate-x-1/2 md:static md:max-w-none md:translate-x-0 landscape:static landscape:max-w-none landscape:translate-x-0'
-  const messageBottomPadding = embedded ? '' : 'pb-28 md:pb-4 landscape:pb-4'
+    : 'fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 md:static md:max-w-none md:translate-x-0 landscape:static landscape:max-w-none landscape:translate-x-0'
+  const messageBottomPadding = embedded ? '' : 'pb-24 md:pb-4 landscape:pb-4'
   const title = group?.title || 'Group'
   const memberText = group ? `${group.members.length}/${group.maxMembers}` : ''
 
@@ -134,9 +133,9 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
   return (
     <>
       <header className={`flex items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur ${railOffset}`}>
-        <button onClick={() => router.push('/chats')} className="text-zinc-500 hover:text-zinc-800">
+        <Link href="/chats" className="text-zinc-500 hover:text-zinc-800">
           {embedded ? <X size={20} /> : <ArrowLeft size={20} />}
-        </button>
+        </Link>
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
           <Users size={16} />
         </div>
@@ -182,8 +181,6 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
           <Send size={16} />
         </button>
       </form>
-
-      {!embedded && <TabBar />}
     </>
   )
 }

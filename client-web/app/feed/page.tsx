@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useReducer, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Plus } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
-import { getPosts, createPost, ackPost } from '@/lib/relay'
+import { getPosts, createPost, ackPost, joinGroup } from '@/lib/relay'
 import * as ws from '@/lib/ws'
 import { db } from '@/lib/db'
 import { resolveTags } from '@/lib/tags'
@@ -11,7 +12,7 @@ import { PostCard } from '@/components/PostCard'
 import { ComposeSheet } from '@/components/ComposeSheet'
 import { ReachModal } from '@/components/ReachModal'
 import { TabBar } from '@/components/TabBar'
-import type { Post, ServerEnvelope, MediaItem, CreatePostRequest } from '@/lib/types'
+import type { Post, ServerEnvelope, MediaItem } from '@/lib/types'
 
 type Reactions = Map<string, Set<string>>
 
@@ -38,6 +39,8 @@ function toPost(env: ServerEnvelope & { type: 'post' }, isOwn = false): Post {
     attachment_type: env.attachment_type,
     attachments: env.attachments,
     scheduled_at: env.scheduled_at,
+    rally_group_id: env.rally_group_id,
+    rally_max_members: env.rally_max_members,
   }
 }
 
@@ -48,6 +51,9 @@ export default function FeedPage() {
   const posts = useAppStore((s) => s.posts)
   const addPosts = useAppStore((s) => s.addPosts)
   const addPost = useAppStore((s) => s.addPost)
+  const upsertGroup = useAppStore((s) => s.upsertGroup)
+  const userId = useAppStore((s) => s.userId)
+  const router = useRouter()
 
   const [reactions, setReactions] = useReducer(
     (state: Reactions, action: { postId: string; emoji: string }) =>
@@ -102,6 +108,7 @@ export default function FeedPage() {
     imageUrl?: string | null,
     attachments?: MediaItem[] | null,
     scheduledAt?: number | null,
+    rallyMaxMembers?: number | null,
   ) {
     const t = useAppStore.getState().token
     if (!t) throw new Error('not authenticated')
@@ -116,11 +123,67 @@ export default function FeedPage() {
     }
 
     const id = crypto.randomUUID()
+    const groupId = rallyMaxMembers ? crypto.randomUUID() : null
     const timestamp = Math.floor(Date.now() / 1000)
 
-    addPost({ id, author_id: '', content, timestamp, expires_at: expiresAt, is_own: true, category, media_ref_name: mediaRefName, image_url: imageUrl, attachments, scheduled_at: scheduledAt })
+    addPost({
+      id,
+      author_id: userId ?? '',
+      content,
+      timestamp,
+      expires_at: expiresAt,
+      is_own: true,
+      category,
+      media_ref_name: mediaRefName,
+      image_url: imageUrl,
+      attachments,
+      scheduled_at: scheduledAt,
+      rally_group_id: groupId,
+      rally_max_members: rallyMaxMembers,
+    })
 
-    await createPost(t, { id, content, timestamp, expires_at: expiresAt, recipient_ids: recipientIds, category, media_ref_name: mediaRefName, image_url: imageUrl, attachments, scheduled_at: scheduledAt })
+    await createPost(t, {
+      id,
+      content,
+      timestamp,
+      expires_at: expiresAt,
+      recipient_ids: recipientIds,
+      category,
+      media_ref_name: mediaRefName,
+      image_url: imageUrl,
+      attachments,
+      scheduled_at: scheduledAt,
+      rally: groupId && rallyMaxMembers ? { group_id: groupId, max_members: rallyMaxMembers } : null,
+    })
+
+    if (groupId && rallyMaxMembers && userId) {
+      upsertGroup({
+        id: groupId,
+        creatorId: userId,
+        title: content.slice(0, 48),
+        maxMembers: rallyMaxMembers,
+        createdAt: timestamp,
+        members: [{ userId, joinedAt: timestamp }],
+        lastMessage: '',
+        lastAt: timestamp,
+        unread: 0,
+      })
+    }
+  }
+
+  async function handleJoinGroup(post: Post) {
+    if (!post.rally_group_id) return
+    if (post.is_own) {
+      router.push(`/chats?group=${encodeURIComponent(post.rally_group_id)}`)
+      return
+    }
+    const ok = window.confirm('Joining this group will show your identity to everyone in the group.')
+    if (!ok) return
+    const t = useAppStore.getState().token
+    if (!t) return
+    const group = await joinGroup(t, post.rally_group_id)
+    upsertGroup(group)
+    router.push(`/chats?group=${encodeURIComponent(group.id)}`)
   }
 
   if (!bootstrapped) {
@@ -191,6 +254,7 @@ export default function FeedPage() {
                 onToggleLike={() => setReactions({ postId: post.id, emoji: 'heart' })}
                 onToggleResonate={() => setReactions({ postId: post.id, emoji: 'resonate' })}
                 onReach={() => setReachPost(post)}
+                onJoinGroup={() => handleJoinGroup(post).catch(console.error)}
               />
             )
           })

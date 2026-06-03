@@ -16,14 +16,15 @@ use uuid::Uuid;
 use crate::app::AppState;
 use crate::auth::{AuthError, validate_registration, verify_auth_request};
 use crate::bot_ai::{self, ChatMessage};
-use crate::db::models::{NewPendingMessage, NewPost};
+use crate::db::models::{NewGroup, NewGroupMember, NewGroupMessage, NewPendingMessage, NewPost};
 use crate::db::repository;
 use crate::seed;
 use crate::wire::{
-    AckPostRequest, AddFriendRequest, AuthRequest, AuthResponse, CreatePostRequest, FriendInfo,
-    FriendListResponse, InviteTokenResponse, MediaUploadResponse, MessageListResponse,
+    AckGroupMessageRequest, AckPostRequest, AddFriendRequest, AuthRequest, AuthResponse,
+    CreatePostRequest, FriendInfo, FriendListResponse, GroupInfo, GroupListResponse,
+    GroupMessageListResponse, InviteTokenResponse, MediaUploadResponse, MessageListResponse,
     PostAssistRequest, PostAssistResponse, PostListResponse, RedeemInviteTokenRequest,
-    RegisterRequest, SendMessageRequest, ServerEnvelope,
+    RegisterRequest, SendGroupMessageRequest, SendMessageRequest, ServerEnvelope,
 };
 
 #[derive(Debug)]
@@ -377,6 +378,18 @@ pub async fn post_post(
         .attachments
         .as_ref()
         .map(|v| serde_json::to_string(v).unwrap_or_default());
+    if let Some(rally) = &payload.rally {
+        if rally.max_members < 2 || rally.max_members > 20 {
+            return Err(ApiError::BadRequest(
+                "rally max_members must be between 2 and 20".to_string(),
+            ));
+        }
+        if rally.group_id.trim().is_empty() {
+            return Err(ApiError::BadRequest(
+                "rally group_id is required".to_string(),
+            ));
+        }
+    }
     let post = NewPost {
         id: &payload.id,
         author_id: &author_id,
@@ -390,17 +403,46 @@ pub async fn post_post(
         attachment_type: payload.attachment_type.as_deref(),
         attachments: attachments_json.as_deref(),
         scheduled_at: payload.scheduled_at,
+        rally_group_id: payload.rally.as_ref().map(|r| r.group_id.as_str()),
+        rally_max_members: payload.rally.as_ref().map(|r| r.max_members),
     };
     let recipient_refs: Vec<&str> = payload.recipient_ids.iter().map(String::as_str).collect();
 
     {
         let mut conn = state.pool.get().map_err(db_error)?;
-        repository::create_post_with_deliveries(&mut conn, &post, &recipient_refs).map_err(
-            |e| {
+        if let Some(rally) = &payload.rally {
+            let title = payload.content.chars().take(48).collect::<String>();
+            let group = NewGroup {
+                id: &rally.group_id,
+                creator_id: &author_id,
+                title: &title,
+                max_members: rally.max_members,
+                created_at: payload.timestamp,
+            };
+            let creator_member = NewGroupMember {
+                group_id: &rally.group_id,
+                user_id: &author_id,
+                joined_at: payload.timestamp,
+            };
+            repository::create_rally_post_with_deliveries(
+                &mut conn,
+                &post,
+                &recipient_refs,
+                &group,
+                &creator_member,
+            )
+            .map_err(|e| {
                 error!(post_id = %payload.id, error = %e, "db insert failed for post");
                 db_error(e)
-            },
-        )?;
+            })?;
+        } else {
+            repository::create_post_with_deliveries(&mut conn, &post, &recipient_refs).map_err(
+                |e| {
+                    error!(post_id = %payload.id, error = %e, "db insert failed for post");
+                    db_error(e)
+                },
+            )?;
+        }
     }
 
     let envelope = ServerEnvelope::Post {
@@ -416,6 +458,8 @@ pub async fn post_post(
         attachment_type: payload.attachment_type,
         attachments: payload.attachments,
         scheduled_at: payload.scheduled_at,
+        rally_group_id: payload.rally.as_ref().map(|r| r.group_id.clone()),
+        rally_max_members: payload.rally.as_ref().map(|r| r.max_members),
     };
 
     let publish_now = payload.scheduled_at.map_or(true, |t| t <= now_ts());
@@ -501,6 +545,135 @@ pub async fn ack_post(
     }
 
     info!(user_id = %user_id, post_id = %payload.post_id, "post acked");
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn get_groups(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<GroupListResponse>, ApiError> {
+    let user_id = authed_user(&headers, &state)?;
+    let mut conn = state.pool.get().map_err(db_error)?;
+    let groups = repository::list_groups_for_user(&mut conn, &user_id)
+        .map_err(db_error)?
+        .into_iter()
+        .map(|(group, members)| GroupInfo::from_group(group, members))
+        .collect();
+    Ok(Json(GroupListResponse { groups }))
+}
+
+pub async fn join_group(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<String>,
+) -> Result<Json<GroupInfo>, ApiError> {
+    let user_id = authed_user(&headers, &state)?;
+    let mut conn = state.pool.get().map_err(db_error)?;
+    let (group, members, inserted) =
+        repository::join_group_if_space(&mut conn, &group_id, &user_id, now_ts()).map_err(|e| {
+            if matches!(e, diesel::result::Error::RollbackTransaction) {
+                ApiError::Conflict("group is full".to_string())
+            } else if matches!(e, diesel::result::Error::NotFound) {
+                ApiError::NotFound
+            } else {
+                db_error(e)
+            }
+        })?;
+    if inserted {
+        info!(group_id = %group_id, user_id = %user_id, "user joined group");
+    }
+    let group_info = GroupInfo::from_group(group, members);
+    if inserted {
+        for member in &group_info.members {
+            if member.user_id == user_id {
+                continue;
+            }
+            state.send_to_online(
+                &member.user_id,
+                ServerEnvelope::GroupUpdate {
+                    group: group_info.clone(),
+                },
+            );
+        }
+    }
+    Ok(Json(group_info))
+}
+
+pub async fn get_group_messages(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<String>,
+) -> Result<Json<GroupMessageListResponse>, ApiError> {
+    let user_id = authed_user(&headers, &state)?;
+    let mut conn = state.pool.get().map_err(db_error)?;
+    if !repository::is_group_member(&mut conn, &group_id, &user_id).map_err(db_error)? {
+        return Err(ApiError::Forbidden);
+    }
+    let messages =
+        repository::list_pending_group_messages_for_group(&mut conn, &group_id, &user_id)
+            .map_err(db_error)?
+            .into_iter()
+            .map(ServerEnvelope::from)
+            .collect();
+    Ok(Json(GroupMessageListResponse { messages }))
+}
+
+pub async fn post_group_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(group_id): Path<String>,
+    Json(payload): Json<SendGroupMessageRequest>,
+) -> Result<StatusCode, ApiError> {
+    let sender_id = authed_user(&headers, &state)?;
+    let message = NewGroupMessage {
+        id: &payload.id,
+        group_id: &group_id,
+        sender_id: &sender_id,
+        payload_hex: &payload.payload_hex,
+        sent_at: payload.sent_at,
+    };
+    let recipients = {
+        let mut conn = state.pool.get().map_err(db_error)?;
+        repository::create_group_message_with_deliveries(&mut conn, &message).map_err(|e| {
+            if matches!(e, diesel::result::Error::NotFound) {
+                ApiError::Forbidden
+            } else {
+                db_error(e)
+            }
+        })?
+    };
+
+    let envelope = ServerEnvelope::GroupMessage {
+        id: payload.id.clone(),
+        group_id: group_id.clone(),
+        sender_id,
+        payload_hex: payload.payload_hex,
+        sent_at: payload.sent_at,
+    };
+    for recipient_id in recipients {
+        state.send_to_online(&recipient_id, envelope.clone());
+    }
+    Ok(StatusCode::ACCEPTED)
+}
+
+pub async fn ack_group_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(_group_id): Path<String>,
+    Json(payload): Json<AckGroupMessageRequest>,
+) -> Result<StatusCode, ApiError> {
+    let user_id = authed_user(&headers, &state)?;
+    let mut conn = state.pool.get().map_err(db_error)?;
+    let updated = repository::mark_group_message_delivered(
+        &mut conn,
+        &payload.message_id,
+        &user_id,
+        now_ts(),
+    )
+    .map_err(db_error)?;
+    if updated == 0 {
+        return Err(ApiError::NotFound);
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -854,6 +1027,14 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String) {
                 let _ = tx.send(ServerEnvelope::from(post));
             }
             debug!(user_id = %user_id, count, "websocket post drain queued");
+        }
+
+        if let Ok(messages) = repository::list_pending_group_messages(&mut conn, &user_id) {
+            let count = messages.len();
+            for message in messages {
+                let _ = tx.send(ServerEnvelope::from(message));
+            }
+            debug!(user_id = %user_id, count, "websocket group message drain queued");
         }
     } else {
         error!(user_id = %user_id, "websocket initial drain could not acquire db connection");

@@ -6,13 +6,14 @@ import { Plus } from 'lucide-react'
 import { ensureAnonThread } from '@/hooks/useAnonSink'
 import { processFriendAdded } from '@/hooks/useFriendSink'
 import { useAppStore, type ConversationMeta } from '@/lib/store'
-import { getMessages } from '@/lib/relay'
+import { getGroups, getMessages } from '@/lib/relay'
 import { decodePayload as decode } from '@/lib/crypto'
 import * as ws from '@/lib/ws'
 import { db } from '@/lib/db'
 import { ChatRow } from '@/components/ChatRow'
 import { TabBar } from '@/components/TabBar'
 import ConversationPage from './ConversationView'
+import GroupConversationPage from './GroupConversationView'
 import type { ServerEnvelope } from '@/lib/types'
 
 interface FriendRow {
@@ -57,6 +58,7 @@ export default function ChatsPage() {
 function ChatsPageContent() {
   const searchParams = useSearchParams()
   const selectedConversationId = searchParams.get('id')
+  const selectedGroupId = searchParams.get('group')
   const split = useSplitLayout()
 
   if (split) {
@@ -64,10 +66,12 @@ function ChatsPageContent() {
       <>
         <div className="ml-20 grid h-dvh min-w-0 grid-cols-[minmax(320px,28vw)_minmax(0,1fr)]">
           <aside className="flex min-h-0 flex-col border-r border-zinc-200 bg-zinc-50">
-            <ChatListPage pane selectedConversationId={selectedConversationId} />
+            <ChatListPage pane selectedConversationId={selectedConversationId} selectedGroupId={selectedGroupId} />
           </aside>
           <section className="flex min-h-0 min-w-0 flex-col bg-zinc-50">
-            {selectedConversationId ? (
+            {selectedGroupId ? (
+              <GroupConversationPage groupId={selectedGroupId} embedded />
+            ) : selectedConversationId ? (
               <ConversationPage conversationId={selectedConversationId} embedded />
             ) : (
               <div className="flex flex-1 items-center justify-center px-8 text-center text-sm text-zinc-400">
@@ -81,6 +85,7 @@ function ChatsPageContent() {
     )
   }
 
+  if (selectedGroupId) return <GroupConversationPage groupId={selectedGroupId} />
   if (selectedConversationId) return <ConversationPage />
 
   return <ChatListPage />
@@ -89,18 +94,22 @@ function ChatsPageContent() {
 interface ChatListPageProps {
   pane?: boolean
   selectedConversationId?: string | null
+  selectedGroupId?: string | null
 }
 
-function ChatListPage({ pane = false, selectedConversationId = null }: ChatListPageProps = {}) {
+function ChatListPage({ pane = false, selectedConversationId = null, selectedGroupId = null }: ChatListPageProps = {}) {
   const bootstrapped = useAppStore((s) => s.bootstrapped)
   const bootstrapError = useAppStore((s) => s.bootstrapError)
   const userId = useAppStore((s) => s.userId)
   const token = useAppStore((s) => s.token)
   const addMessage = useAppStore((s) => s.addMessage)
   const upsertConversation = useAppStore((s) => s.upsertConversation)
+  const upsertGroups = useAppStore((s) => s.upsertGroups)
   // Conversations survive tab navigation — sourced from Zustand.
   const conversationsMap = useAppStore((s) => s.conversations)
   const conversations = Object.values(conversationsMap).sort((a, b) => b.lastAt - a.lastAt)
+  const groupsMap = useAppStore((s) => s.groups)
+  const groups = Object.values(groupsMap).sort((a, b) => b.lastAt - a.lastAt)
   const router = useRouter()
 
   const [friends, setFriends] = useState<FriendRow[]>([])
@@ -177,6 +186,11 @@ function ChatListPage({ pane = false, selectedConversationId = null }: ChatListP
     )
   }, [])
 
+  const loadGroups = useCallback(async (tok: string) => {
+    const res = await getGroups(tok)
+    upsertGroups(res.groups)
+  }, [upsertGroups])
+
   const refreshFriends = useCallback(async (myId: string) => {
     const allFriends = await loadFriends()
     setFriends(
@@ -194,8 +208,9 @@ function ChatListPage({ pane = false, selectedConversationId = null }: ChatListP
     queueMicrotask(() => {
       loadMessages(token, userId).catch(console.error)
       loadAnonThreads().catch(console.error)
+      loadGroups(token).catch(console.error)
     })
-  }, [bootstrapped, loadAnonThreads, loadMessages, token, userId])
+  }, [bootstrapped, loadAnonThreads, loadGroups, loadMessages, token, userId])
 
   // WS: only handle side-effects that need Dexie refreshes.
   // DMs are handled globally by useMessageSink + the store's addMessage.
@@ -239,7 +254,7 @@ function ChatListPage({ pane = false, selectedConversationId = null }: ChatListP
   const conversationFriendIds = new Set(conversations.map((c) => c.friendId))
   const friendsOnly = friends.filter((f) => !conversationFriendIds.has(f.friendId))
 
-  const empty = conversations.length === 0 && friendsOnly.length === 0 && anonThreads.length === 0
+  const empty = conversations.length === 0 && friendsOnly.length === 0 && anonThreads.length === 0 && groups.length === 0
 
   return (
     <>
@@ -261,6 +276,25 @@ function ChatListPage({ pane = false, selectedConversationId = null }: ChatListP
           <p className="pt-16 text-center text-sm text-zinc-400">No messages or friends yet.</p>
         ) : (
           <>
+            {groups.length > 0 && (
+              <>
+                <p className="px-1 text-xs font-medium uppercase tracking-wider text-zinc-400">
+                  Groups
+                </p>
+                {groups.map((g) => (
+                  <ChatRow
+                    key={g.id}
+                    name={g.title || 'Group'}
+                    preview={g.lastMessage || `${g.members.length}/${g.maxMembers} joined`}
+                    timestamp={g.lastAt}
+                    unread={g.unread}
+                    active={selectedGroupId === g.id}
+                    onClick={() => router.push(`/chats?group=${encodeURIComponent(g.id)}`)}
+                  />
+                ))}
+              </>
+            )}
+
             {conversations.map((c: ConversationMeta) => (
               <ChatRow
                 key={c.conversationId}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { X, Send, Sparkles, Paperclip } from 'lucide-react'
+import { X, Send, Sparkles, Paperclip, Users } from 'lucide-react'
 import { db, type LocalTag } from '@/lib/db'
 import { assistPost, uploadMedia } from '@/lib/relay'
 import { useAppStore } from '@/lib/store'
@@ -24,6 +24,7 @@ interface Props {
     imageUrl?: string | null,
     attachments?: MediaItem[] | null,
     scheduledAt?: number | null,
+    rallyMaxMembers?: number | null,
   ) => Promise<void>
 }
 
@@ -61,12 +62,16 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
   const [scheduleMode, setScheduleMode] = useState<'now' | '+1h' | '+4h' | '+1d' | 'custom'>('now')
   const [customSchedule, setCustomSchedule] = useState<string>('')
+  const [postMode, setPostMode] = useState<'anonymous' | 'rally'>('anonymous')
+  const [rallyMaxMembers, setRallyMaxMembers] = useState(4)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const assistRequestRef = useRef(0)
   const contentRef = useRef('')
 
   useEffect(() => {
-    if (open) db.tags.orderBy('name').toArray().then(setAllTags)
+    if (!open) return
+    db.tags.orderBy('name').toArray().then(setAllTags)
+    setShowSuggestions(true)
   }, [open])
 
   if (!open) return null
@@ -247,7 +252,17 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
       const expiresAt = expirySeconds ? Math.floor(Date.now() / 1000) + expirySeconds : null
       const tagIds = selectedTagIds.size > 0 ? [...selectedTagIds] : null
       const scheduledAt = resolveScheduledAt()
-      await onSubmit(content.trim(), expiresAt, tagIds, mediaCategory, mediaRefName, mediaImageUrl, attachments, scheduledAt)
+      await onSubmit(
+        content.trim(),
+        expiresAt,
+        tagIds,
+        mediaCategory,
+        mediaRefName,
+        mediaImageUrl,
+        attachments,
+        scheduledAt,
+        postMode === 'rally' ? rallyMaxMembers : null,
+      )
       setContentValue('')
       setExpirySeconds(null)
       setSelectedTagIds(new Set())
@@ -261,6 +276,8 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
       setPreviewUrls([])
       setScheduleMode('now')
       setCustomSchedule('')
+      setPostMode('anonymous')
+      setRallyMaxMembers(4)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to post')
@@ -273,7 +290,9 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
       <div className="w-full max-w-md rounded-t-2xl bg-white p-6 shadow-xl sm:rounded-2xl">
         <div className="mb-4 flex items-center justify-between">
-          <span className="text-sm font-semibold text-zinc-500">New anonymous post</span>
+          <span className="text-sm font-semibold text-zinc-500">
+            {postMode === 'rally' ? 'New rally post' : 'New anonymous post'}
+          </span>
           <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600">
             <X size={18} />
           </button>
@@ -289,6 +308,28 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
         />
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-2 rounded-xl bg-zinc-100 p-1">
+            <button
+              type="button"
+              onClick={() => setPostMode('anonymous')}
+              className={`rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
+                postMode === 'anonymous' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500'
+              }`}
+            >
+              Anonymous
+            </button>
+            <button
+              type="button"
+              onClick={() => setPostMode('rally')}
+              className={`inline-flex items-center justify-center gap-1 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
+                postMode === 'rally' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500'
+              }`}
+            >
+              <Users size={13} />
+              Rally
+            </button>
+          </div>
+
           <div className="relative">
             <textarea
               autoFocus
@@ -377,7 +418,12 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
               <span>{CATEGORY_EMOJI[mediaCategory ?? ''] ?? ''} {mediaRefName}</span>
               <button
                 type="button"
-                onClick={() => { setMediaCategory(null); setMediaRefName(null); setMediaImageUrl(null) }}
+                onClick={() => {
+                  setMediaCategory(null)
+                  setMediaRefName(null)
+                  setMediaImageUrl(null)
+                  setShowSuggestions(true)
+                }}
                 className="ml-auto text-zinc-400 hover:text-zinc-600"
               >
                 <X size={12} />
@@ -396,6 +442,24 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
                 setShowSuggestions(false)
               }}
             />
+          )}
+
+          {postMode === 'rally' && (
+            <div className="flex items-center justify-between rounded-xl border border-zinc-200 bg-white px-3 py-2">
+              <div className="flex items-center gap-2 text-xs text-zinc-600">
+                <Users size={14} />
+                <span>Group size</span>
+              </div>
+              <select
+                value={rallyMaxMembers}
+                onChange={(e) => setRallyMaxMembers(Number(e.target.value))}
+                className="rounded-lg border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 focus:outline-none"
+              >
+                {Array.from({ length: 19 }, (_, i) => i + 2).map((n) => (
+                  <option key={n} value={n}>{n} people</option>
+                ))}
+              </select>
+            </div>
           )}
 
           <div className="flex items-center justify-between">

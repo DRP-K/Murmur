@@ -9,6 +9,42 @@ diesel::table! {
 }
 
 diesel::table! {
+    group_message_deliveries (message_id, recipient_id) {
+        message_id -> Text,
+        recipient_id -> Text,
+        delivered_at -> Nullable<BigInt>,
+    }
+}
+
+diesel::table! {
+    group_members (group_id, user_id) {
+        group_id -> Text,
+        user_id -> Text,
+        joined_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    group_messages (id) {
+        id -> Text,
+        group_id -> Text,
+        sender_id -> Text,
+        payload_hex -> Text,
+        sent_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    groups (id) {
+        id -> Text,
+        creator_id -> Text,
+        title -> Text,
+        max_members -> Integer,
+        created_at -> BigInt,
+    }
+}
+
+diesel::table! {
     pending_messages (id) {
         id -> Text,
         recipient_id -> Text,
@@ -42,6 +78,8 @@ diesel::table! {
         attachment_type -> Nullable<Text>,
         attachments -> Nullable<Text>,
         scheduled_at -> Nullable<BigInt>,
+        rally_group_id -> Nullable<Text>,
+        rally_max_members -> Nullable<Integer>,
     }
 }
 
@@ -56,9 +94,18 @@ diesel::table! {
 diesel::joinable!(post_deliveries -> posts (post_id));
 diesel::joinable!(post_deliveries -> users (recipient_id));
 diesel::joinable!(posts -> users (author_id));
+diesel::joinable!(group_message_deliveries -> group_messages (message_id));
+diesel::joinable!(group_message_deliveries -> users (recipient_id));
+diesel::joinable!(group_members -> groups (group_id));
+diesel::joinable!(group_members -> users (user_id));
+diesel::joinable!(group_messages -> groups (group_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     friendships,
+    group_message_deliveries,
+    group_members,
+    group_messages,
+    groups,
     pending_messages,
     post_deliveries,
     posts,

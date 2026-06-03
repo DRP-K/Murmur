@@ -14,16 +14,15 @@ export function QrScanner({ onScan, onError }: Props) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const scannerRef = useRef<any>(null)
 
-  const Html5QrCode =
-    typeof window !== 'undefined' ? require('html5-qrcode').Html5Qrcode : null
-
   async function startScanning() {
-    if (!Html5QrCode) {
+    if (typeof window === 'undefined') {
       onError('Camera not available')
       return
     }
 
     try {
+      const { Html5Qrcode } = await import('html5-qrcode')
+      const Html5QrCode = Html5Qrcode
       const scanner = new Html5QrCode('qr-reader')
       scannerRef.current = scanner
       setScanning(true)

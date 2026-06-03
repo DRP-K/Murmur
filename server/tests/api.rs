@@ -336,6 +336,225 @@ async fn post_fanout_and_friend_add() {
 }
 
 #[tokio::test]
+async fn rally_post_creates_group_and_group_messages_flow() {
+    let app = app();
+    let alice = test_user(60);
+    let bob = test_user(61);
+    let carol = test_user(62);
+    register_user(app.clone(), &alice).await;
+    register_user(app.clone(), &bob).await;
+    register_user(app.clone(), &carol).await;
+    let alice_token = auth_user(app.clone(), &alice).await;
+    let bob_token = auth_user(app.clone(), &bob).await;
+    let carol_token = auth_user(app.clone(), &carol).await;
+
+    let create = request(
+        app.clone(),
+        "POST",
+        "/api/posts",
+        Some(&alice_token),
+        json!({
+            "id": "rally-post",
+            "content": "Portal 2 tonight?",
+            "timestamp": 1000,
+            "expires_at": null,
+            "recipient_ids": [bob.user_id, carol.user_id],
+            "rally": { "group_id": "group-1", "max_members": 2 },
+        }),
+    )
+    .await;
+    assert_eq!(create.status(), StatusCode::ACCEPTED);
+
+    let groups = request(
+        app.clone(),
+        "GET",
+        "/api/groups",
+        Some(&alice_token),
+        json!({}),
+    )
+    .await;
+    assert_eq!(groups.status(), StatusCode::OK);
+    let body = groups.into_body().collect().await.expect("body").to_bytes();
+    let body: Value = serde_json::from_slice(&body).expect("groups response");
+    assert_eq!(body["groups"][0]["id"], "group-1");
+    assert_eq!(body["groups"][0]["members"].as_array().unwrap().len(), 1);
+
+    let posts = request(
+        app.clone(),
+        "GET",
+        "/api/posts",
+        Some(&bob_token),
+        json!({}),
+    )
+    .await;
+    let body = posts.into_body().collect().await.expect("body").to_bytes();
+    let body: Value = serde_json::from_slice(&body).expect("posts response");
+    assert_eq!(body["posts"][0]["rally_group_id"], "group-1");
+    assert_eq!(body["posts"][0]["rally_max_members"], 2);
+
+    let join = request(
+        app.clone(),
+        "POST",
+        "/api/groups/group-1/join",
+        Some(&bob_token),
+        json!({}),
+    )
+    .await;
+    assert_eq!(join.status(), StatusCode::OK);
+    let body = join.into_body().collect().await.expect("body").to_bytes();
+    let body: Value = serde_json::from_slice(&body).expect("join response");
+    assert_eq!(body["members"].as_array().unwrap().len(), 2);
+
+    let duplicate_join = request(
+        app.clone(),
+        "POST",
+        "/api/groups/group-1/join",
+        Some(&bob_token),
+        json!({}),
+    )
+    .await;
+    assert_eq!(duplicate_join.status(), StatusCode::OK);
+
+    let full_join = request(
+        app.clone(),
+        "POST",
+        "/api/groups/group-1/join",
+        Some(&carol_token),
+        json!({}),
+    )
+    .await;
+    assert_eq!(full_join.status(), StatusCode::CONFLICT);
+
+    let non_member_send = request(
+        app.clone(),
+        "POST",
+        "/api/groups/group-1/messages",
+        Some(&carol_token),
+        json!({ "id": "gm-bad", "payload_hex": "6869", "sent_at": 1001 }),
+    )
+    .await;
+    assert_eq!(non_member_send.status(), StatusCode::FORBIDDEN);
+
+    let send = request(
+        app.clone(),
+        "POST",
+        "/api/groups/group-1/messages",
+        Some(&bob_token),
+        json!({ "id": "gm-1", "payload_hex": "6869", "sent_at": 1002 }),
+    )
+    .await;
+    assert_eq!(send.status(), StatusCode::ACCEPTED);
+
+    let pending = request(
+        app.clone(),
+        "GET",
+        "/api/groups/group-1/messages",
+        Some(&alice_token),
+        json!({}),
+    )
+    .await;
+    assert_eq!(pending.status(), StatusCode::OK);
+    let body = pending
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let body: Value = serde_json::from_slice(&body).expect("group messages response");
+    assert_eq!(body["messages"][0]["id"], "gm-1");
+    assert_eq!(body["messages"][0]["type"], "group_message");
+
+    let ack = request(
+        app.clone(),
+        "POST",
+        "/api/groups/group-1/messages/ack",
+        Some(&alice_token),
+        json!({ "message_id": "gm-1" }),
+    )
+    .await;
+    assert_eq!(ack.status(), StatusCode::NO_CONTENT);
+
+    let pending_after = request(
+        app,
+        "GET",
+        "/api/groups/group-1/messages",
+        Some(&alice_token),
+        json!({}),
+    )
+    .await;
+    let body = pending_after
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let body: Value = serde_json::from_slice(&body).expect("group messages response");
+    assert!(body["messages"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn group_join_pushes_member_count_update_to_online_members() {
+    let (base, handle) = spawn_server().await;
+    let client = reqwest::Client::new();
+    let alice = test_user(73);
+    let bob = test_user(74);
+    register_user_http(&client, &base, &alice).await;
+    register_user_http(&client, &base, &bob).await;
+    let alice_token = auth_user_http(&client, &base, &alice).await;
+    let bob_token = auth_user_http(&client, &base, &bob).await;
+
+    let create = client
+        .post(format!("{base}/api/posts"))
+        .bearer_auth(&alice_token)
+        .json(&json!({
+            "id": "rally-update-post",
+            "content": "Join this lobby",
+            "timestamp": 1000,
+            "expires_at": null,
+            "recipient_ids": [bob.user_id],
+            "rally": { "group_id": "group-update", "max_members": 4 },
+        }))
+        .send()
+        .await
+        .expect("post request");
+    assert_eq!(create.status(), StatusCode::ACCEPTED);
+
+    let ws_base = base.replace("http://", "ws://");
+    let (mut alice_ws, _) = connect_async(format!("{ws_base}/api/ws?token={alice_token}"))
+        .await
+        .expect("alice ws should connect");
+
+    let join = client
+        .post(format!("{base}/api/groups/group-update/join"))
+        .bearer_auth(&bob_token)
+        .send()
+        .await
+        .expect("join request");
+    assert_eq!(join.status(), StatusCode::OK);
+
+    let update = loop {
+        let msg = timeout(Duration::from_secs(2), alice_ws.next())
+            .await
+            .expect("alice should receive group update")
+            .expect("alice stream should be open")
+            .expect("message ok");
+        let Message::Text(text) = msg else { continue };
+        let env: ServerEnvelope = serde_json::from_str(&text).expect("envelope parses");
+        if matches!(&env, ServerEnvelope::GroupUpdate { group } if group.id == "group-update") {
+            break env;
+        }
+    };
+
+    let ServerEnvelope::GroupUpdate { group } = update else {
+        panic!("expected group update");
+    };
+    assert_eq!(group.members.len(), 2);
+
+    alice_ws.close(None).await.expect("close");
+    handle.abort();
+}
+
+#[tokio::test]
 async fn post_assist_requires_auth_and_configuration() {
     let app = app();
     let alice = test_user(31);
@@ -628,6 +847,70 @@ async fn add_and_list_friends() {
     // Unauthenticated request.
     let unauth = request(app, "GET", "/api/friends", None, json!({})).await;
     assert_eq!(unauth.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn invite_token_can_add_multiple_friends_until_expiry() {
+    let app = app();
+    let alice = test_user(70);
+    let bob = test_user(71);
+    let carol = test_user(72);
+    register_user(app.clone(), &alice).await;
+    register_user(app.clone(), &bob).await;
+    register_user(app.clone(), &carol).await;
+    let alice_token = auth_user(app.clone(), &alice).await;
+    let bob_token = auth_user(app.clone(), &bob).await;
+    let carol_token = auth_user(app.clone(), &carol).await;
+
+    let token_resp = request(
+        app.clone(),
+        "POST",
+        "/api/invite-token",
+        Some(&alice_token),
+        json!({}),
+    )
+    .await;
+    assert_eq!(token_resp.status(), StatusCode::OK);
+    let body = token_resp
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let body: Value = serde_json::from_slice(&body).expect("invite response");
+    let code = body["code"].as_str().expect("code").to_string();
+
+    let bob_redeem = request(
+        app.clone(),
+        "POST",
+        "/api/friends/by-token",
+        Some(&bob_token),
+        json!({ "code": code }),
+    )
+    .await;
+    assert_eq!(bob_redeem.status(), StatusCode::ACCEPTED);
+
+    let carol_redeem = request(
+        app.clone(),
+        "POST",
+        "/api/friends/by-token",
+        Some(&carol_token),
+        json!({ "code": code }),
+    )
+    .await;
+    assert_eq!(carol_redeem.status(), StatusCode::ACCEPTED);
+
+    let list_resp = request(app, "GET", "/api/friends", Some(&alice_token), json!({})).await;
+    assert_eq!(list_resp.status(), StatusCode::OK);
+    let body = list_resp
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let list: FriendListResponse = serde_json::from_slice(&body).expect("friend list");
+    assert!(list.friends.iter().any(|f| f.user_id == bob.user_id));
+    assert!(list.friends.iter().any(|f| f.user_id == carol.user_id));
 }
 
 #[tokio::test]

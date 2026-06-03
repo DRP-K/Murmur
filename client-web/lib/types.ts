@@ -31,6 +31,20 @@ export type ServerEnvelope =
       attachment_type?: 'image' | 'video' | null
       attachments?: MediaItem[] | null
       scheduled_at?: number | null
+      rally_group_id?: string | null
+      rally_max_members?: number | null
+    }
+  | {
+      type: 'group_message'
+      id: string
+      group_id: string
+      sender_id: string
+      payload_hex: string
+      sent_at: number
+    }
+  | {
+      type: 'group_update'
+      group: GroupInfo
     }
   | { type: 'delivered_ack'; id: string }
 
@@ -75,6 +89,10 @@ export interface CreatePostRequest {
   attachment_type?: string | null
   attachments?: MediaItem[] | null
   scheduled_at?: number | null
+  rally?: {
+    group_id: string
+    max_members: number
+  } | null
 }
 
 export interface PostAssistRequest {
@@ -115,6 +133,8 @@ export interface Post {
   attachment_type?: 'image' | 'video' | null
   attachments?: MediaItem[] | null
   scheduled_at?: number | null
+  rally_group_id?: string | null
+  rally_max_members?: number | null
 }
 
 export interface Message {
@@ -125,6 +145,34 @@ export interface Message {
   msg_type: MsgType
   sent_at: number
   status: 'sent' | 'delivered'
+}
+
+export interface GroupMemberInfo {
+  user_id: string
+  joined_at: number
+}
+
+export interface GroupInfo {
+  id: string
+  creator_id: string
+  title: string
+  max_members: number
+  created_at: number
+  members: GroupMemberInfo[]
+}
+
+export interface GroupListResponse {
+  groups: GroupInfo[]
+}
+
+export interface SendGroupMessageRequest {
+  id: string
+  payload_hex: string
+  sent_at: number
+}
+
+export interface GroupMessageListResponse {
+  messages: ServerEnvelope[]
 }
 
 export interface Friend {

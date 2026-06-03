@@ -12,6 +12,10 @@ import type {
   AckPostRequest,
   AddFriendRequest,
   FriendListResponse,
+  GroupInfo,
+  GroupListResponse,
+  GroupMessageListResponse,
+  SendGroupMessageRequest,
 } from './types'
 
 const RELAY_URL = process.env.NEXT_PUBLIC_RELAY_URL ?? 'http://localhost:3000'
@@ -154,6 +158,54 @@ export async function addFriend(token: string, friendId: string): Promise<void> 
 export async function getFriends(token: string): Promise<FriendListResponse> {
   const res = await requireOk(await authedFetch(token, '/api/friends'))
   return res.json()
+}
+
+export async function getGroups(token: string): Promise<GroupListResponse> {
+  const res = await requireOk(await authedFetch(token, '/api/groups'))
+  return res.json()
+}
+
+export async function joinGroup(token: string, groupId: string): Promise<GroupInfo> {
+  const res = await requireOk(
+    await authedFetch(token, `/api/groups/${encodeURIComponent(groupId)}/join`, { method: 'POST' }),
+  )
+  return res.json()
+}
+
+export async function sendGroupMessage(
+  token: string,
+  groupId: string,
+  req: SendGroupMessageRequest,
+): Promise<void> {
+  await requireOk(
+    await authedFetch(token, `/api/groups/${encodeURIComponent(groupId)}/messages`, {
+      method: 'POST',
+      body: JSON.stringify(req),
+    }),
+  )
+}
+
+export async function getGroupMessages(
+  token: string,
+  groupId: string,
+): Promise<GroupMessageListResponse> {
+  const res = await requireOk(
+    await authedFetch(token, `/api/groups/${encodeURIComponent(groupId)}/messages`),
+  )
+  return res.json()
+}
+
+export async function ackGroupMessage(
+  token: string,
+  groupId: string,
+  messageId: string,
+): Promise<void> {
+  const res = await authedFetch(token, `/api/groups/${encodeURIComponent(groupId)}/messages/ack`, {
+    method: 'POST',
+    body: JSON.stringify({ message_id: messageId }),
+  })
+  if (res.status === 404) return
+  await requireOk(res)
 }
 
 export async function createInviteToken(token: string): Promise<{ code: string; expires_at: number }> {

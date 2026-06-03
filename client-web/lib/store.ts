@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { auth as relayAuth } from './relay'
 import { getIdentity } from './identity'
 import { db } from './db'
-import type { Post } from './types'
+import type { GroupInfo, Post } from './types'
 
 export type WsStatus = 'idle' | 'connecting' | 'connected' | 'disconnected'
 
@@ -23,6 +23,33 @@ export interface ConversationMeta {
   unread: number
 }
 
+export interface LocalGroupMember {
+  userId: string
+  joinedAt: number
+}
+
+export interface LocalGroup {
+  id: string
+  creatorId: string
+  title: string
+  maxMembers: number
+  createdAt: number
+  members: LocalGroupMember[]
+  lastMessage: string
+  lastAt: number
+  unread: number
+}
+
+export interface LocalGroupMessage {
+  id: string
+  groupId: string
+  senderId: string
+  content: string
+  sentAt: number
+  isOwn: boolean
+  status: 'sent' | 'delivered'
+}
+
 // convId = sort([a, b]).join('-'): 32-char hex + '-' + 32-char hex.
 function friendIdFromConvId(convId: string, myUserId: string | null): string {
   const a = convId.slice(0, 32)
@@ -40,6 +67,8 @@ function mergePost(existing: Post, incoming: Post): Post {
     image_url: incoming.image_url ?? existing.image_url,
     attachment_url: incoming.attachment_url ?? existing.attachment_url,
     attachment_type: incoming.attachment_type ?? existing.attachment_type,
+    rally_group_id: incoming.rally_group_id ?? existing.rally_group_id,
+    rally_max_members: incoming.rally_max_members ?? existing.rally_max_members,
   }
 }
 
@@ -55,8 +84,24 @@ function postsMatch(a: Post, b: Post): boolean {
     a.media_ref_name === b.media_ref_name &&
     a.image_url === b.image_url &&
     a.attachment_url === b.attachment_url &&
-    a.attachment_type === b.attachment_type
+    a.attachment_type === b.attachment_type &&
+    a.rally_group_id === b.rally_group_id &&
+    a.rally_max_members === b.rally_max_members
   )
+}
+
+function groupFromInfo(info: GroupInfo, existing?: LocalGroup): LocalGroup {
+  return {
+    id: info.id,
+    creatorId: info.creator_id,
+    title: info.title,
+    maxMembers: info.max_members,
+    createdAt: info.created_at,
+    members: info.members.map((m) => ({ userId: m.user_id, joinedAt: m.joined_at })),
+    lastMessage: existing?.lastMessage ?? '',
+    lastAt: existing?.lastAt ?? info.created_at,
+    unread: existing?.unread ?? 0,
+  }
 }
 
 export interface FriendSetupEntry {
@@ -75,6 +120,8 @@ interface AppState {
   posts: Post[]
   messagesByConv: Record<string, LocalMessage[]>
   conversations: Record<string, ConversationMeta>
+  groups: Record<string, LocalGroup>
+  groupMessagesByGroup: Record<string, LocalGroupMessage[]>
   pendingFriendSetups: FriendSetupEntry[]
 }
 
@@ -98,6 +145,10 @@ interface AppActions {
     friendName?: string
   }) => void
   clearUnread: (convId: string) => void
+  upsertGroup: (group: GroupInfo | LocalGroup) => void
+  upsertGroups: (groups: GroupInfo[]) => void
+  addGroupMessage: (groupId: string, msg: LocalGroupMessage) => void
+  clearGroupUnread: (groupId: string) => void
   pushFriendSetup: (entry: FriendSetupEntry) => void
   popFriendSetup: () => void
 }
@@ -114,6 +165,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
   posts: [],
   messagesByConv: {},
   conversations: {},
+  groups: {},
+  groupMessagesByGroup: {},
   pendingFriendSetups: [],
 
   setSession: (userId, pubkeyHex, token) => set({ userId, pubkeyHex, token }),
@@ -131,10 +184,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   loadFromDexie: async () => {
-    const [storedMsgs, storedConvs, storedPosts] = await Promise.all([
+    const [storedMsgs, storedConvs, storedPosts, storedGroups, storedMembers, storedGroupMessages] = await Promise.all([
       db.messages.toArray(),
       db.conversations.toArray(),
       db.posts.orderBy('timestamp').reverse().toArray(),
+      db.groups.toArray(),
+      db.groupMembers.toArray(),
+      db.groupMessages.toArray(),
     ])
     const messagesByConv: Record<string, LocalMessage[]> = {}
     for (const { convId, ...msg } of storedMsgs) {
@@ -148,7 +204,38 @@ export const useAppStore = create<AppStore>((set, get) => ({
       storedConvs.map((c) => [c.conversationId, c]),
     )
 
-    set({ messagesByConv, conversations, posts: storedPosts })
+    const groupMessagesByGroup: Record<string, LocalGroupMessage[]> = {}
+    for (const msg of storedGroupMessages) {
+      ;(groupMessagesByGroup[msg.groupId] ??= []).push(msg)
+    }
+    for (const arr of Object.values(groupMessagesByGroup)) {
+      arr.sort((a, b) => a.sentAt - b.sentAt)
+    }
+
+    const membersByGroup = new Map<string, LocalGroupMember[]>()
+    for (const member of storedMembers) {
+      const arr = membersByGroup.get(member.groupId) ?? []
+      arr.push({ userId: member.userId, joinedAt: member.joinedAt })
+      membersByGroup.set(member.groupId, arr)
+    }
+    const groups: Record<string, LocalGroup> = {}
+    for (const group of storedGroups) {
+      const messages = groupMessagesByGroup[group.id] ?? []
+      const latest = messages[messages.length - 1]
+      groups[group.id] = {
+        id: group.id,
+        creatorId: group.creatorId,
+        title: group.title,
+        maxMembers: group.maxMembers,
+        createdAt: group.createdAt,
+        members: membersByGroup.get(group.id) ?? [],
+        lastMessage: latest?.content ?? '',
+        lastAt: latest?.sentAt ?? group.createdAt,
+        unread: 0,
+      }
+    }
+
+    set({ messagesByConv, conversations, posts: storedPosts, groups, groupMessagesByGroup })
   },
 
   addPosts: (incoming) => {
@@ -326,6 +413,101 @@ export const useAppStore = create<AppStore>((set, get) => ({
     })
     const conv = get().conversations[convId]
     if (conv) db.conversations.put(conv).catch(console.error)
+  },
+
+  upsertGroup: (group) => {
+    const incoming = 'creator_id' in group ? groupFromInfo(group, get().groups[group.id]) : group
+    set((state) => ({
+      groups: {
+        ...state.groups,
+        [incoming.id]: incoming,
+      },
+    }))
+    const saved = get().groups[incoming.id]
+    if (!saved) return
+    db.groups.put({
+      id: saved.id,
+      creatorId: saved.creatorId,
+      title: saved.title,
+      maxMembers: saved.maxMembers,
+      createdAt: saved.createdAt,
+    }).catch(console.error)
+    for (const member of saved.members) {
+      db.groupMembers.put({
+        id: `${saved.id}:${member.userId}`,
+        groupId: saved.id,
+        userId: member.userId,
+        joinedAt: member.joinedAt,
+      }).catch(console.error)
+    }
+  },
+
+  upsertGroups: (incoming) => {
+    set((state) => {
+      const groups = { ...state.groups }
+      for (const group of incoming) {
+        groups[group.id] = groupFromInfo(group, groups[group.id])
+      }
+      return { groups }
+    })
+    for (const group of incoming) {
+      const saved = get().groups[group.id]
+      if (!saved) continue
+      db.groups.put({
+        id: saved.id,
+        creatorId: saved.creatorId,
+        title: saved.title,
+        maxMembers: saved.maxMembers,
+        createdAt: saved.createdAt,
+      }).catch(console.error)
+      for (const member of saved.members) {
+        db.groupMembers.put({
+          id: `${saved.id}:${member.userId}`,
+          groupId: saved.id,
+          userId: member.userId,
+          joinedAt: member.joinedAt,
+        }).catch(console.error)
+      }
+    }
+  },
+
+  addGroupMessage: (groupId, msg) => {
+    set((state) => {
+      const existing = state.groupMessagesByGroup[groupId] ?? []
+      if (existing.some((m) => m.id === msg.id)) return state
+      const group = state.groups[groupId]
+      return {
+        groupMessagesByGroup: {
+          ...state.groupMessagesByGroup,
+          [groupId]: [...existing, msg].sort((a, b) => a.sentAt - b.sentAt),
+        },
+        groups: group
+          ? {
+              ...state.groups,
+              [groupId]: {
+                ...group,
+                lastMessage: msg.content,
+                lastAt: msg.sentAt,
+                unread: msg.isOwn ? group.unread : group.unread + 1,
+              },
+            }
+          : state.groups,
+      }
+    })
+    db.groupMessages.put(msg).catch(console.error)
+  },
+
+  clearGroupUnread: (groupId) => {
+    set((state) => {
+      const group = state.groups[groupId]
+      if (!group || group.unread === 0) return state
+      return {
+        groups: {
+          ...state.groups,
+          [groupId]: { ...group, unread: 0 },
+        },
+      }
+    })
   },
 
   pushFriendSetup: (entry) =>

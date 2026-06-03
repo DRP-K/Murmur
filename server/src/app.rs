@@ -156,9 +156,10 @@ impl AppState {
 
     pub fn consume_invite_token(&self, code: &str, now: i64) -> Option<String> {
         let mut tokens = self.invite_tokens.write().ok()?;
-        let entry = tokens.remove(code)?;
+        tokens.retain(|_, v| v.expires_at > now);
+        let entry = tokens.get(code)?;
         if entry.expires_at > now {
-            Some(entry.creator_id)
+            Some(entry.creator_id.clone())
         } else {
             None
         }
@@ -206,6 +207,16 @@ pub fn router(state: AppState) -> Router {
         .route("/api/posts", post(api::post_post).get(api::get_posts))
         .route("/api/posts/assist", post(api::post_assist))
         .route("/api/posts/ack", post(api::ack_post))
+        .route("/api/groups", get(api::get_groups))
+        .route("/api/groups/{id}/join", post(api::join_group))
+        .route(
+            "/api/groups/{id}/messages",
+            get(api::get_group_messages).post(api::post_group_message),
+        )
+        .route(
+            "/api/groups/{id}/messages/ack",
+            post(api::ack_group_message),
+        )
         .route(
             "/api/media",
             post(api::upload_media).layer(DefaultBodyLimit::max(52 * 1024 * 1024)),

@@ -69,7 +69,9 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
   const contentRef = useRef('')
 
   useEffect(() => {
-    if (open) db.tags.orderBy('name').toArray().then(setAllTags)
+    if (!open) return
+    db.tags.orderBy('name').toArray().then(setAllTags)
+    setShowSuggestions(true)
   }, [open])
 
   if (!open) return null
@@ -416,7 +418,12 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
               <span>{CATEGORY_EMOJI[mediaCategory ?? ''] ?? ''} {mediaRefName}</span>
               <button
                 type="button"
-                onClick={() => { setMediaCategory(null); setMediaRefName(null); setMediaImageUrl(null) }}
+                onClick={() => {
+                  setMediaCategory(null)
+                  setMediaRefName(null)
+                  setMediaImageUrl(null)
+                  setShowSuggestions(true)
+                }}
                 className="ml-auto text-zinc-400 hover:text-zinc-600"
               >
                 <X size={12} />

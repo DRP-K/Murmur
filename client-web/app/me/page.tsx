@@ -68,14 +68,14 @@ export default function MePage() {
   return (
     <>
       {/* Header */}
-      <header className="flex items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur md:ml-20 landscape:ml-20">
+      <header className="flex items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur md:ml-32 landscape:ml-32">
         <button onClick={() => router.back()} className="text-zinc-500 hover:text-zinc-800">
           <ArrowLeft size={20} />
         </button>
         <h1 className="text-base font-semibold text-zinc-800">Me</h1>
       </header>
 
-      <main className="flex flex-1 flex-col gap-6 p-4 pb-16 md:ml-20 md:pb-4 landscape:ml-20 landscape:pb-4">
+      <main className="flex flex-1 flex-col gap-6 p-4 pb-16 md:ml-32 md:pb-4 landscape:ml-32 landscape:pb-4">
         {/* Avatar + display name */}
         <div className="flex items-center gap-4">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-200 text-xl font-bold text-zinc-600">

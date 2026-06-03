@@ -64,7 +64,7 @@ function ChatsPageContent() {
   if (split) {
     return (
       <>
-        <div className="ml-20 grid h-dvh min-w-0 grid-cols-[minmax(320px,28vw)_minmax(0,1fr)]">
+        <div className="ml-32 grid h-dvh min-w-0 grid-cols-[minmax(320px,28vw)_minmax(0,1fr)]">
           <aside className="flex min-h-0 flex-col border-r border-zinc-200 bg-zinc-50">
             <ChatListPage pane selectedConversationId={selectedConversationId} selectedGroupId={selectedGroupId} />
           </aside>
@@ -258,7 +258,7 @@ function ChatListPage({ pane = false, selectedConversationId = null, selectedGro
 
   return (
     <>
-      <header className={`${pane ? '' : 'md:ml-20 landscape:ml-20'} sticky top-0 z-10 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur`}>
+      <header className={`${pane ? '' : 'md:ml-32 landscape:ml-32'} sticky top-0 z-10 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur`}>
         <div className="flex items-center justify-between">
           <h1 className="text-base font-semibold text-zinc-800">Chats</h1>
           <button
@@ -271,7 +271,7 @@ function ChatListPage({ pane = false, selectedConversationId = null, selectedGro
         </div>
       </header>
 
-      <main className={`${pane ? 'min-h-0 overflow-y-auto pb-4' : 'pb-16 md:ml-20 md:pb-4 landscape:ml-20 landscape:pb-4'} flex flex-1 flex-col gap-2 p-4`}>
+      <main className={`${pane ? 'min-h-0 overflow-y-auto pb-4' : 'pb-16 md:ml-32 md:pb-4 landscape:ml-32 landscape:pb-4'} flex flex-1 flex-col gap-2 p-4`}>
         {empty ? (
           <p className="pt-16 text-center text-sm text-zinc-400">No messages or friends yet.</p>
         ) : (

@@ -179,7 +179,7 @@ export default function ConversationPage({ conversationId: conversationIdProp, e
   }
 
   const displayName = friendName ?? (friendId ? friendId.slice(0, 8) + '…' : '…')
-  const railOffset = embedded ? '' : 'md:ml-20 landscape:ml-20'
+  const railOffset = embedded ? '' : 'md:ml-32 landscape:ml-32'
 
   return (
     <>

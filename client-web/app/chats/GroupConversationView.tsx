@@ -117,7 +117,7 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
     return <div className="flex flex-1 items-center justify-center text-sm text-zinc-400">Missing group id.</div>
   }
 
-  const railOffset = embedded ? '' : 'md:ml-20 landscape:ml-20'
+  const railOffset = embedded ? '' : 'md:ml-32 landscape:ml-32'
   const mobileComposerOffset = embedded
     ? ''
     : 'fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 md:static md:max-w-none md:translate-x-0 landscape:static landscape:max-w-none landscape:translate-x-0'

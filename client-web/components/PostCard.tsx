@@ -1,6 +1,6 @@
 'use client'
 
-import { Heart, Waves, MessageCircle } from 'lucide-react'
+import { Heart, Waves, MessageCircle, Users } from 'lucide-react'
 import type { Post } from '@/lib/types'
 
 interface Props {
@@ -10,6 +10,7 @@ interface Props {
   onToggleLike: () => void
   onToggleResonate: () => void
   onReach: () => void
+  onJoinGroup: () => void
 }
 
 const CATEGORY_EMOJI: Record<string, string> = { movies: '🎬', music: '🎵', games: '🎮' }
@@ -22,8 +23,9 @@ function relativeTime(unixSec: number): string {
   return `${Math.floor(diff / 86400)}d ago`
 }
 
-export function PostCard({ post, liked, resonated, onToggleLike, onToggleResonate, onReach }: Props) {
+export function PostCard({ post, liked, resonated, onToggleLike, onToggleResonate, onReach, onJoinGroup }: Props) {
   const hasImage = !!post.image_url
+  const isRally = !!post.rally_group_id
 
   return (
     <div className="relative overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
@@ -55,6 +57,12 @@ export function PostCard({ post, liked, resonated, onToggleLike, onToggleResonat
               </span>
             )}
             <span className="font-mono font-semibold text-zinc-500"># anon</span>
+            {isRally && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                <Users size={10} />
+                Rally
+              </span>
+            )}
           </div>
           <span>{relativeTime(post.timestamp)}</span>
         </div>
@@ -65,6 +73,13 @@ export function PostCard({ post, liked, resonated, onToggleLike, onToggleResonat
 
         {post.media_ref_name && (
           <p className="mb-3 text-xs text-zinc-500">{post.media_ref_name}</p>
+        )}
+
+        {isRally && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+            <Users size={14} />
+            <span>Up to {post.rally_max_members ?? 4} people</span>
+          </div>
         )}
 
         {post.attachments && post.attachments.length > 0 ? (
@@ -129,7 +144,15 @@ export function PostCard({ post, liked, resonated, onToggleLike, onToggleResonat
             <span>~</span>
           </button>
 
-          {!post.is_own && (
+          {isRally ? (
+            <button
+              onClick={onJoinGroup}
+              className="ml-auto flex items-center gap-1 rounded-full border border-emerald-300 px-3 py-1 text-xs text-emerald-700 transition-colors hover:border-emerald-500 hover:text-emerald-900"
+            >
+              <Users size={12} />
+              {post.is_own ? 'Open group' : 'Join'}
+            </button>
+          ) : !post.is_own && (
             <button
               onClick={onReach}
               className="ml-auto flex items-center gap-1 rounded-full border border-zinc-300 px-3 py-1 text-xs text-zinc-600 transition-colors hover:border-zinc-500 hover:text-zinc-800"

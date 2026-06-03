@@ -16,6 +16,12 @@ function toPost(env: ServerEnvelope & { type: 'post' }) {
     category: env.category,
     media_ref_name: env.media_ref_name,
     image_url: env.image_url,
+    attachment_url: env.attachment_url,
+    attachment_type: env.attachment_type,
+    attachments: env.attachments,
+    scheduled_at: env.scheduled_at,
+    rally_group_id: env.rally_group_id,
+    rally_max_members: env.rally_max_members,
   }
 }
 

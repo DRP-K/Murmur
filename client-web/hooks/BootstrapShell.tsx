@@ -7,6 +7,7 @@ import { useAppStore } from '@/lib/store'
 import * as ws from '@/lib/ws'
 import { useAnonSink } from '@/hooks/useAnonSink'
 import { useFriendSink } from '@/hooks/useFriendSink'
+import { useGroupSink } from '@/hooks/useGroupSink'
 import { useMessageSink } from '@/hooks/useMessageSink'
 import { usePostSink } from '@/hooks/usePostSink'
 import { FriendSetupModal } from '@/components/FriendSetupModal'
@@ -36,6 +37,7 @@ export function BootstrapShell({ children }: { children: React.ReactNode }) {
   // Global sinks — always active once booted.
   useAnonSink()
   useFriendSink()
+  useGroupSink()
   useMessageSink()
   usePostSink()
 

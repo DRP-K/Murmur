@@ -55,6 +55,8 @@ export interface StoredPost {
   media_ref_name?: string | null
   image_url?: string | null
   scheduled_at?: number | null
+  rally_group_id?: string | null
+  rally_max_members?: number | null
 }
 
 export interface LocalTag {
@@ -88,6 +90,31 @@ export interface StoredAnonMessage {
   isOwn: boolean
 }
 
+export interface StoredGroup {
+  id: string
+  creatorId: string
+  title: string
+  maxMembers: number
+  createdAt: number
+}
+
+export interface StoredGroupMember {
+  id: string
+  groupId: string
+  userId: string
+  joinedAt: number
+}
+
+export interface StoredGroupMessage {
+  id: string
+  groupId: string
+  senderId: string
+  content: string
+  sentAt: number
+  isOwn: boolean
+  status: 'sent' | 'delivered'
+}
+
 class MurmurDatabase extends Dexie {
   identity!: EntityTable<Identity, 'userId'>
   friends!: EntityTable<LocalFriend, 'userId'>
@@ -98,6 +125,9 @@ class MurmurDatabase extends Dexie {
   anonMessages!: EntityTable<StoredAnonMessage, 'id'>
   tags!: EntityTable<LocalTag, 'id'>
   friendTags!: Table<LocalFriendTag, [string, string]>
+  groups!: EntityTable<StoredGroup, 'id'>
+  groupMembers!: EntityTable<StoredGroupMember, 'id'>
+  groupMessages!: EntityTable<StoredGroupMessage, 'id'>
 
   constructor() {
     super('murmur')
@@ -131,6 +161,12 @@ class MurmurDatabase extends Dexie {
     })
     this.version(9).stores({
       posts: 'id, timestamp, category, scheduled_at',
+    })
+    this.version(10).stores({
+      posts: 'id, timestamp, category, scheduled_at, rally_group_id',
+      groups: 'id, createdAt',
+      groupMembers: 'id, groupId, userId',
+      groupMessages: 'id, groupId, sentAt',
     })
   }
 }

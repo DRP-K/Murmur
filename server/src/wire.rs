@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::db::models::{PendingMessage, Post};
+use crate::db::models::{Group, GroupMember, GroupMessage, PendingMessage, Post};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MediaItem {
@@ -62,6 +62,16 @@ pub enum ServerEnvelope {
         attachment_type: Option<String>,
         attachments: Option<Vec<MediaItem>>,
         scheduled_at: Option<i64>,
+        rally_group_id: Option<String>,
+        rally_max_members: Option<i32>,
+    },
+    #[serde(rename = "group_message")]
+    GroupMessage {
+        id: String,
+        group_id: String,
+        sender_id: String,
+        payload_hex: String,
+        sent_at: i64,
     },
     #[serde(rename = "delivered_ack")]
     DeliveredAck { id: String },
@@ -98,6 +108,20 @@ impl From<Post> for ServerEnvelope {
                 .as_deref()
                 .and_then(|s| serde_json::from_str(s).ok()),
             scheduled_at: value.scheduled_at,
+            rally_group_id: value.rally_group_id,
+            rally_max_members: value.rally_max_members,
+        }
+    }
+}
+
+impl From<GroupMessage> for ServerEnvelope {
+    fn from(value: GroupMessage) -> Self {
+        Self::GroupMessage {
+            id: value.id,
+            group_id: value.group_id,
+            sender_id: value.sender_id,
+            payload_hex: value.payload_hex,
+            sent_at: value.sent_at,
         }
     }
 }
@@ -121,6 +145,13 @@ pub struct CreatePostRequest {
     pub attachment_type: Option<String>,
     pub attachments: Option<Vec<MediaItem>>,
     pub scheduled_at: Option<i64>,
+    pub rally: Option<CreateRallyRequest>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateRallyRequest {
+    pub group_id: String,
+    pub max_members: i32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -149,6 +180,63 @@ pub struct PostListResponse {
 #[derive(Debug, Deserialize)]
 pub struct AckPostRequest {
     pub post_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SendGroupMessageRequest {
+    pub id: String,
+    pub payload_hex: String,
+    pub sent_at: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AckGroupMessageRequest {
+    pub message_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GroupMemberInfo {
+    pub user_id: String,
+    pub joined_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GroupInfo {
+    pub id: String,
+    pub creator_id: String,
+    pub title: String,
+    pub max_members: i32,
+    pub created_at: i64,
+    pub members: Vec<GroupMemberInfo>,
+}
+
+impl GroupInfo {
+    pub fn from_group(group: Group, members: Vec<GroupMember>) -> Self {
+        Self {
+            id: group.id,
+            creator_id: group.creator_id,
+            title: group.title,
+            max_members: group.max_members,
+            created_at: group.created_at,
+            members: members
+                .into_iter()
+                .map(|member| GroupMemberInfo {
+                    user_id: member.user_id,
+                    joined_at: member.joined_at,
+                })
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GroupListResponse {
+    pub groups: Vec<GroupInfo>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GroupMessageListResponse {
+    pub messages: Vec<ServerEnvelope>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

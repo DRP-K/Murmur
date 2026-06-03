@@ -1,10 +1,14 @@
 use diesel::prelude::*;
 
 use super::models::{
-    Friendship, NewFriendship, NewPendingMessage, NewPost, NewPostDelivery, NewUser,
+    Friendship, Group, GroupMember, GroupMessage, NewFriendship, NewGroup, NewGroupMember,
+    NewGroupMessage, NewGroupMessageDelivery, NewPendingMessage, NewPost, NewPostDelivery, NewUser,
     PendingMessage, Post, PostDelivery, User,
 };
-use super::schema::{friendships, pending_messages, post_deliveries, posts, users};
+use super::schema::{
+    friendships, group_members, group_message_deliveries, group_messages, groups, pending_messages,
+    post_deliveries, posts, users,
+};
 
 pub fn register_user(
     conn: &mut SqliteConnection,
@@ -76,6 +80,43 @@ pub fn create_post_with_deliveries(
     recipient_ids: &[&str],
 ) -> QueryResult<usize> {
     conn.transaction(|conn| {
+        diesel::insert_into(posts::table)
+            .values(post)
+            .execute(conn)?;
+
+        if recipient_ids.is_empty() {
+            return Ok(0);
+        }
+
+        let deliveries: Vec<NewPostDelivery<'_>> = recipient_ids
+            .iter()
+            .map(|recipient_id| NewPostDelivery {
+                post_id: post.id,
+                recipient_id: *recipient_id,
+                delivered_at: None,
+            })
+            .collect();
+
+        diesel::insert_or_ignore_into(post_deliveries::table)
+            .values(&deliveries)
+            .execute(conn)
+    })
+}
+
+pub fn create_rally_post_with_deliveries(
+    conn: &mut SqliteConnection,
+    post: &NewPost<'_>,
+    recipient_ids: &[&str],
+    group: &NewGroup<'_>,
+    creator_member: &NewGroupMember<'_>,
+) -> QueryResult<usize> {
+    conn.transaction(|conn| {
+        diesel::insert_into(groups::table)
+            .values(group)
+            .execute(conn)?;
+        diesel::insert_into(group_members::table)
+            .values(creator_member)
+            .execute(conn)?;
         diesel::insert_into(posts::table)
             .values(post)
             .execute(conn)?;
@@ -256,6 +297,171 @@ pub fn add_friendship_pair(
 
         Ok(inserted_first + inserted_second)
     })
+}
+
+pub fn get_group(conn: &mut SqliteConnection, group_id: &str) -> QueryResult<Group> {
+    groups::table
+        .filter(groups::id.eq(group_id))
+        .select(Group::as_select())
+        .first(conn)
+}
+
+pub fn is_group_member(
+    conn: &mut SqliteConnection,
+    group_id: &str,
+    user_id: &str,
+) -> QueryResult<bool> {
+    group_members::table
+        .filter(group_members::group_id.eq(group_id))
+        .filter(group_members::user_id.eq(user_id))
+        .select(GroupMember::as_select())
+        .first(conn)
+        .optional()
+        .map(|m| m.is_some())
+}
+
+pub fn list_group_members(
+    conn: &mut SqliteConnection,
+    group_id: &str,
+) -> QueryResult<Vec<GroupMember>> {
+    group_members::table
+        .filter(group_members::group_id.eq(group_id))
+        .order(group_members::joined_at.asc())
+        .select(GroupMember::as_select())
+        .load(conn)
+}
+
+pub fn join_group_if_space(
+    conn: &mut SqliteConnection,
+    group_id: &str,
+    user_id: &str,
+    joined_at: i64,
+) -> QueryResult<(Group, Vec<GroupMember>, bool)> {
+    conn.transaction(|conn| {
+        let group = get_group(conn, group_id)?;
+        if is_group_member(conn, group_id, user_id)? {
+            let members = list_group_members(conn, group_id)?;
+            return Ok((group, members, false));
+        }
+
+        let member_count: i64 = group_members::table
+            .filter(group_members::group_id.eq(group_id))
+            .count()
+            .get_result(conn)?;
+        if member_count >= i64::from(group.max_members) {
+            return Err(diesel::result::Error::RollbackTransaction);
+        }
+
+        let member = NewGroupMember {
+            group_id,
+            user_id,
+            joined_at,
+        };
+        diesel::insert_into(group_members::table)
+            .values(&member)
+            .execute(conn)?;
+        let members = list_group_members(conn, group_id)?;
+        Ok((group, members, true))
+    })
+}
+
+pub fn list_groups_for_user(
+    conn: &mut SqliteConnection,
+    user_id: &str,
+) -> QueryResult<Vec<(Group, Vec<GroupMember>)>> {
+    let joined_groups = group_members::table
+        .inner_join(groups::table)
+        .filter(group_members::user_id.eq(user_id))
+        .order(groups::created_at.desc())
+        .select(Group::as_select())
+        .load::<Group>(conn)?;
+
+    let mut result = Vec::with_capacity(joined_groups.len());
+    for group in joined_groups {
+        let members = list_group_members(conn, &group.id)?;
+        result.push((group, members));
+    }
+    Ok(result)
+}
+
+pub fn create_group_message_with_deliveries(
+    conn: &mut SqliteConnection,
+    message: &NewGroupMessage<'_>,
+) -> QueryResult<Vec<String>> {
+    conn.transaction(|conn| {
+        if !is_group_member(conn, message.group_id, message.sender_id)? {
+            return Err(diesel::result::Error::NotFound);
+        }
+
+        diesel::insert_into(group_messages::table)
+            .values(message)
+            .execute(conn)?;
+
+        let recipients: Vec<String> = group_members::table
+            .filter(group_members::group_id.eq(message.group_id))
+            .filter(group_members::user_id.ne(message.sender_id))
+            .select(group_members::user_id)
+            .load(conn)?;
+
+        if !recipients.is_empty() {
+            let deliveries: Vec<NewGroupMessageDelivery<'_>> = recipients
+                .iter()
+                .map(|recipient_id| NewGroupMessageDelivery {
+                    message_id: message.id,
+                    recipient_id,
+                    delivered_at: None,
+                })
+                .collect();
+            diesel::insert_into(group_message_deliveries::table)
+                .values(&deliveries)
+                .execute(conn)?;
+        }
+
+        Ok(recipients)
+    })
+}
+
+pub fn list_pending_group_messages(
+    conn: &mut SqliteConnection,
+    recipient_id: &str,
+) -> QueryResult<Vec<GroupMessage>> {
+    group_message_deliveries::table
+        .inner_join(group_messages::table)
+        .filter(group_message_deliveries::recipient_id.eq(recipient_id))
+        .filter(group_message_deliveries::delivered_at.is_null())
+        .order(group_messages::sent_at.asc())
+        .select(GroupMessage::as_select())
+        .load(conn)
+}
+
+pub fn list_pending_group_messages_for_group(
+    conn: &mut SqliteConnection,
+    group_id: &str,
+    recipient_id: &str,
+) -> QueryResult<Vec<GroupMessage>> {
+    group_message_deliveries::table
+        .inner_join(group_messages::table)
+        .filter(group_message_deliveries::recipient_id.eq(recipient_id))
+        .filter(group_message_deliveries::delivered_at.is_null())
+        .filter(group_messages::group_id.eq(group_id))
+        .order(group_messages::sent_at.asc())
+        .select(GroupMessage::as_select())
+        .load(conn)
+}
+
+pub fn mark_group_message_delivered(
+    conn: &mut SqliteConnection,
+    message_id: &str,
+    recipient_id: &str,
+    delivered_at: i64,
+) -> QueryResult<usize> {
+    diesel::update(
+        group_message_deliveries::table
+            .filter(group_message_deliveries::message_id.eq(message_id))
+            .filter(group_message_deliveries::recipient_id.eq(recipient_id)),
+    )
+    .set(group_message_deliveries::delivered_at.eq(Some(delivered_at)))
+    .execute(conn)
 }
 
 pub fn list_friends_for_user(
@@ -449,6 +655,8 @@ mod tests {
             attachment_type: None,
             attachments: None,
             scheduled_at: None,
+            rally_group_id: None,
+            rally_max_members: None,
         };
 
         let inserted_deliveries = create_post_with_deliveries(&mut conn, &post, &["u2", "u3"])
@@ -485,6 +693,8 @@ mod tests {
             attachment_type: None,
             attachments: None,
             scheduled_at: None,
+            rally_group_id: None,
+            rally_max_members: None,
         };
         let expired = NewPost {
             id: "expired",
@@ -499,6 +709,8 @@ mod tests {
             attachment_type: None,
             attachments: None,
             scheduled_at: None,
+            rally_group_id: None,
+            rally_max_members: None,
         };
 
         create_post_with_deliveries(&mut conn, &fresh, &["u2"]).expect("fresh fan-out should work");
@@ -580,6 +792,8 @@ mod tests {
             attachment_type: None,
             attachments: None,
             scheduled_at,
+            rally_group_id: None,
+            rally_max_members: None,
         }
     }
 

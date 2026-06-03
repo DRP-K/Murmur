@@ -336,6 +336,163 @@ async fn post_fanout_and_friend_add() {
 }
 
 #[tokio::test]
+async fn rally_post_creates_group_and_group_messages_flow() {
+    let app = app();
+    let alice = test_user(60);
+    let bob = test_user(61);
+    let carol = test_user(62);
+    register_user(app.clone(), &alice).await;
+    register_user(app.clone(), &bob).await;
+    register_user(app.clone(), &carol).await;
+    let alice_token = auth_user(app.clone(), &alice).await;
+    let bob_token = auth_user(app.clone(), &bob).await;
+    let carol_token = auth_user(app.clone(), &carol).await;
+
+    let create = request(
+        app.clone(),
+        "POST",
+        "/api/posts",
+        Some(&alice_token),
+        json!({
+            "id": "rally-post",
+            "content": "Portal 2 tonight?",
+            "timestamp": 1000,
+            "expires_at": null,
+            "recipient_ids": [bob.user_id, carol.user_id],
+            "rally": { "group_id": "group-1", "max_members": 2 },
+        }),
+    )
+    .await;
+    assert_eq!(create.status(), StatusCode::ACCEPTED);
+
+    let groups = request(
+        app.clone(),
+        "GET",
+        "/api/groups",
+        Some(&alice_token),
+        json!({}),
+    )
+    .await;
+    assert_eq!(groups.status(), StatusCode::OK);
+    let body = groups.into_body().collect().await.expect("body").to_bytes();
+    let body: Value = serde_json::from_slice(&body).expect("groups response");
+    assert_eq!(body["groups"][0]["id"], "group-1");
+    assert_eq!(body["groups"][0]["members"].as_array().unwrap().len(), 1);
+
+    let posts = request(
+        app.clone(),
+        "GET",
+        "/api/posts",
+        Some(&bob_token),
+        json!({}),
+    )
+    .await;
+    let body = posts.into_body().collect().await.expect("body").to_bytes();
+    let body: Value = serde_json::from_slice(&body).expect("posts response");
+    assert_eq!(body["posts"][0]["rally_group_id"], "group-1");
+    assert_eq!(body["posts"][0]["rally_max_members"], 2);
+
+    let join = request(
+        app.clone(),
+        "POST",
+        "/api/groups/group-1/join",
+        Some(&bob_token),
+        json!({}),
+    )
+    .await;
+    assert_eq!(join.status(), StatusCode::OK);
+    let body = join.into_body().collect().await.expect("body").to_bytes();
+    let body: Value = serde_json::from_slice(&body).expect("join response");
+    assert_eq!(body["members"].as_array().unwrap().len(), 2);
+
+    let duplicate_join = request(
+        app.clone(),
+        "POST",
+        "/api/groups/group-1/join",
+        Some(&bob_token),
+        json!({}),
+    )
+    .await;
+    assert_eq!(duplicate_join.status(), StatusCode::OK);
+
+    let full_join = request(
+        app.clone(),
+        "POST",
+        "/api/groups/group-1/join",
+        Some(&carol_token),
+        json!({}),
+    )
+    .await;
+    assert_eq!(full_join.status(), StatusCode::CONFLICT);
+
+    let non_member_send = request(
+        app.clone(),
+        "POST",
+        "/api/groups/group-1/messages",
+        Some(&carol_token),
+        json!({ "id": "gm-bad", "payload_hex": "6869", "sent_at": 1001 }),
+    )
+    .await;
+    assert_eq!(non_member_send.status(), StatusCode::FORBIDDEN);
+
+    let send = request(
+        app.clone(),
+        "POST",
+        "/api/groups/group-1/messages",
+        Some(&bob_token),
+        json!({ "id": "gm-1", "payload_hex": "6869", "sent_at": 1002 }),
+    )
+    .await;
+    assert_eq!(send.status(), StatusCode::ACCEPTED);
+
+    let pending = request(
+        app.clone(),
+        "GET",
+        "/api/groups/group-1/messages",
+        Some(&alice_token),
+        json!({}),
+    )
+    .await;
+    assert_eq!(pending.status(), StatusCode::OK);
+    let body = pending
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let body: Value = serde_json::from_slice(&body).expect("group messages response");
+    assert_eq!(body["messages"][0]["id"], "gm-1");
+    assert_eq!(body["messages"][0]["type"], "group_message");
+
+    let ack = request(
+        app.clone(),
+        "POST",
+        "/api/groups/group-1/messages/ack",
+        Some(&alice_token),
+        json!({ "message_id": "gm-1" }),
+    )
+    .await;
+    assert_eq!(ack.status(), StatusCode::NO_CONTENT);
+
+    let pending_after = request(
+        app,
+        "GET",
+        "/api/groups/group-1/messages",
+        Some(&alice_token),
+        json!({}),
+    )
+    .await;
+    let body = pending_after
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let body: Value = serde_json::from_slice(&body).expect("group messages response");
+    assert!(body["messages"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn post_assist_requires_auth_and_configuration() {
     let app = app();
     let alice = test_user(31);

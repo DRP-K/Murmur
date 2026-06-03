@@ -481,13 +481,14 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 title="Add image or video"
-                className={`rounded-lg p-1.5 transition-colors ${
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
                   pendingFiles.length > 0
-                    ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
-                    : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'
+                    ? 'border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900'
+                    : 'border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:text-zinc-900'
                 }`}
               >
                 <ImageIcon size={14} />
+                <span>Add media</span>
               </button>
             </div>
 

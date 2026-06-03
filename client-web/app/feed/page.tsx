@@ -205,7 +205,7 @@ export default function FeedPage() {
 
   return (
     <>
-      <header className="sticky top-0 z-10 border-b border-zinc-200 bg-white/90 backdrop-blur md:ml-20 landscape:ml-20">
+      <header className="sticky top-0 z-10 border-b border-zinc-200 bg-white/90 backdrop-blur md:ml-32 landscape:ml-32">
         <div className="flex items-center justify-between px-4 py-3">
           <h1 className="text-base font-semibold text-zinc-800">Feed</h1>
           <button
@@ -237,7 +237,7 @@ export default function FeedPage() {
         </div>
       </header>
 
-      <main className="flex flex-1 flex-col gap-3 p-4 pb-16 md:ml-20 md:pb-4 landscape:ml-20 landscape:pb-4">
+      <main className="flex flex-1 flex-col gap-3 p-4 pb-16 md:ml-32 md:pb-4 landscape:ml-32 landscape:pb-4">
         {visiblePosts.length === 0 ? (
           <p className="pt-16 text-center text-sm text-zinc-400">
             No posts yet. Be the first to share something.

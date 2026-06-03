@@ -156,9 +156,10 @@ impl AppState {
 
     pub fn consume_invite_token(&self, code: &str, now: i64) -> Option<String> {
         let mut tokens = self.invite_tokens.write().ok()?;
-        let entry = tokens.remove(code)?;
+        tokens.retain(|_, v| v.expires_at > now);
+        let entry = tokens.get(code)?;
         if entry.expires_at > now {
-            Some(entry.creator_id)
+            Some(entry.creator_id.clone())
         } else {
             None
         }

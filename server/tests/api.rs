@@ -788,6 +788,70 @@ async fn add_and_list_friends() {
 }
 
 #[tokio::test]
+async fn invite_token_can_add_multiple_friends_until_expiry() {
+    let app = app();
+    let alice = test_user(70);
+    let bob = test_user(71);
+    let carol = test_user(72);
+    register_user(app.clone(), &alice).await;
+    register_user(app.clone(), &bob).await;
+    register_user(app.clone(), &carol).await;
+    let alice_token = auth_user(app.clone(), &alice).await;
+    let bob_token = auth_user(app.clone(), &bob).await;
+    let carol_token = auth_user(app.clone(), &carol).await;
+
+    let token_resp = request(
+        app.clone(),
+        "POST",
+        "/api/invite-token",
+        Some(&alice_token),
+        json!({}),
+    )
+    .await;
+    assert_eq!(token_resp.status(), StatusCode::OK);
+    let body = token_resp
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let body: Value = serde_json::from_slice(&body).expect("invite response");
+    let code = body["code"].as_str().expect("code").to_string();
+
+    let bob_redeem = request(
+        app.clone(),
+        "POST",
+        "/api/friends/by-token",
+        Some(&bob_token),
+        json!({ "code": code }),
+    )
+    .await;
+    assert_eq!(bob_redeem.status(), StatusCode::ACCEPTED);
+
+    let carol_redeem = request(
+        app.clone(),
+        "POST",
+        "/api/friends/by-token",
+        Some(&carol_token),
+        json!({ "code": code }),
+    )
+    .await;
+    assert_eq!(carol_redeem.status(), StatusCode::ACCEPTED);
+
+    let list_resp = request(app, "GET", "/api/friends", Some(&alice_token), json!({})).await;
+    assert_eq!(list_resp.status(), StatusCode::OK);
+    let body = list_resp
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    let list: FriendListResponse = serde_json::from_slice(&body).expect("friend list");
+    assert!(list.friends.iter().any(|f| f.user_id == bob.user_id));
+    assert!(list.friends.iter().any(|f| f.user_id == carol.user_id));
+}
+
+#[tokio::test]
 async fn websocket_initial_drain_sends_pending_messages() {
     let (base, handle) = spawn_server().await;
     let client = reqwest::Client::new();

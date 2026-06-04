@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { X, Send, Hash, Image as ImageIcon, Users } from 'lucide-react'
+import { X, Send, Image as ImageIcon, Users } from 'lucide-react'
 import { db, type LocalTag } from '@/lib/db'
 import { assistPost, uploadMedia } from '@/lib/relay'
 import { useAppStore } from '@/lib/store'
@@ -58,6 +58,8 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
   const [assistSuggestion, setAssistSuggestion] = useState<AssistSuggestion | null>(null)
   const [assisting, setAssisting] = useState(false)
   const [applyingAssistMedia, setApplyingAssistMedia] = useState(false)
+  const [hashCategory, setHashCategory] = useState<{ category: Category; mediaRefName: string } | null>(null)
+  const [applyingHashCategory, setApplyingHashCategory] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
   const [scheduleMode, setScheduleMode] = useState<'now' | '+1h' | '+4h' | '+1d' | 'custom'>('now')
@@ -67,12 +69,12 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
   const [rallyInputValue, setRallyInputValue] = useState('4')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const assistRequestRef = useRef(0)
+  const hashAssistRef = useRef(0)
   const contentRef = useRef('')
 
   useEffect(() => {
     if (!open) return
     db.tags.orderBy('name').toArray().then(setAllTags)
-    setShowSuggestions(true)
   }, [open])
 
   if (!open) return null
@@ -148,6 +150,7 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
       if (suggestion.requestedPrefix !== value.trim()) return null
       return suggestion
     })
+    setHashCategory(null)
   }
 
   async function requestAssist() {
@@ -218,6 +221,36 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
     }
   }
 
+  async function requestHashAssist() {
+    const outline = contentRef.current.trim()
+    if (outline.split(/\s+/).filter(Boolean).length < 2) return
+    const token = useAppStore.getState().token
+    if (!token) return
+    const reqId = ++hashAssistRef.current
+    try {
+      const suggestion = await assistPost(token, outline)
+      if (hashAssistRef.current !== reqId) return
+      if (suggestion.category && suggestion.media_ref_name)
+        setHashCategory({ category: suggestion.category, mediaRefName: suggestion.media_ref_name })
+    } catch { /* silent */ }
+  }
+
+  async function applyHashCategory() {
+    if (!hashCategory) return
+    const { category, mediaRefName: refName } = hashCategory
+    setMediaCategory(category)
+    setMediaRefName(refName)
+    setMediaImageUrl(null)
+    setHashCategory(null)
+    setShowSuggestions(false)
+    setApplyingHashCategory(true)
+    try {
+      const url = await fetchMediaImage(category, refName)
+      setMediaImageUrl(url)
+    } catch { setMediaImageUrl(null) }
+    finally { setApplyingHashCategory(false) }
+  }
+
   function toggleTag(tagId: string) {
     setSelectedTagIds((prev) => {
       const next = new Set(prev)
@@ -273,6 +306,7 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
       setMediaRefName(null)
       setMediaImageUrl(null)
       setAssistSuggestion(null)
+      setHashCategory(null)
       previewUrls.forEach((u) => URL.revokeObjectURL(u))
       setPendingFiles([])
       setPreviewUrls([])
@@ -361,15 +395,24 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
               </button>
               <button
                 type="button"
-                onClick={() => setShowSuggestions((v) => !v)}
-                title="Choose category"
-                className={`rounded-lg border p-1.5 transition-colors ${
+                onClick={() => {
+                  const opening = !showSuggestions
+                  setShowSuggestions((v) => !v)
+                  if (opening && canRephrase) {
+                    setHashCategory(null)
+                    requestHashAssist()
+                  } else if (!opening) {
+                    setHashCategory(null)
+                  }
+                }}
+                title="Choose topic"
+                className={`rounded-lg border px-2 py-1 text-[10px] font-semibold transition-colors ${
                   showSuggestions
                     ? 'border-zinc-900 bg-zinc-900 text-white'
                     : 'border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300 hover:text-zinc-900'
                 }`}
               >
-                <Hash size={15} />
+                Topic
               </button>
             </div>
           </div>
@@ -439,16 +482,29 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
           )}
 
           {showSuggestions && (
-            <PostSuggestions
-              onSelect={(s: SelectedSuggestion) => {
-                setContentValue(s.text)
-                setMediaCategory(s.category)
-                setMediaRefName(s.mediaRefName)
-                setMediaImageUrl(s.imageUrl)
-                setAssistSuggestion(null)
-                setShowSuggestions(false)
-              }}
-            />
+            <div className="flex flex-col gap-2">
+              {hashCategory && (
+                <button
+                  type="button"
+                  onClick={applyHashCategory}
+                  disabled={applyingHashCategory}
+                  className="self-start rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-200 disabled:opacity-60"
+                >
+                  {CATEGORY_EMOJI[hashCategory.category]} {hashCategory.mediaRefName}
+                  {applyingHashCategory ? ' ...' : ''}
+                </button>
+              )}
+              <PostSuggestions
+                onSelect={(s: SelectedSuggestion) => {
+                  setMediaCategory(s.category)
+                  setMediaRefName(s.mediaRefName)
+                  setMediaImageUrl(s.imageUrl)
+                  setAssistSuggestion(null)
+                  setHashCategory(null)
+                  setShowSuggestions(false)
+                }}
+              />
+            </div>
           )}
 
           {postMode === 'rally' && (

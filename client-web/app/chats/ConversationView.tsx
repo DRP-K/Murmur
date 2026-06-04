@@ -180,10 +180,13 @@ export default function ConversationPage({ conversationId: conversationIdProp, e
 
   const displayName = friendName ?? (friendId ? friendId.slice(0, 8) + '…' : '…')
   const railOffset = embedded ? '' : 'md:ml-32 landscape:ml-32'
+  const mobileComposerOffset = embedded
+    ? ''
+    : 'sticky bottom-0 z-10 w-full max-w-md md:static md:max-w-none md:translate-x-0 landscape:static landscape:max-w-none landscape:translate-x-0'
 
   return (
     <>
-      <header className={`flex items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur ${railOffset}`}>
+      <header className={`flex sticky top-0 z-10 items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur ${railOffset}`}>
         {!embedded && (
           <button onClick={() => router.push('/chats')} className="text-zinc-500 hover:text-zinc-800">
             <ArrowLeft size={20} />
@@ -282,7 +285,7 @@ export default function ConversationPage({ conversationId: conversationIdProp, e
 
       <form
         onSubmit={handleSend}
-        className={`flex items-end gap-2 border-t border-zinc-200 bg-white p-4 ${railOffset}`}
+        className={`flex items-end gap-2 border-t border-zinc-200 bg-white p-4 ${mobileComposerOffset} ${railOffset}`}
       >
         <textarea
           value={input}

@@ -121,7 +121,7 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
   const railOffset = embedded ? '' : 'md:ml-32 landscape:ml-32'
   const mobileComposerOffset = embedded
     ? ''
-    : 'fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 md:static md:max-w-none md:translate-x-0 landscape:static landscape:max-w-none landscape:translate-x-0'
+    : 'sticky bottom-0 z-10 w-full max-w-md md:static md:max-w-none md:translate-x-0 landscape:static landscape:max-w-none landscape:translate-x-0'
   const messageBottomPadding = embedded ? '' : 'pb-24 md:pb-4 landscape:pb-4'
   const title = group?.title || 'Group'
   const memberText = group ? `${group.members.length}/${group.maxMembers}` : ''
@@ -133,7 +133,7 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
 
   return (
     <>
-      <header className={`flex items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur ${railOffset}`}>
+      <header className={`flex sticky top-0 z-10 items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur ${railOffset}`}>
         {!embedded && (
           <button onClick={() => router.push('/chats')} className="text-zinc-500 hover:text-zinc-800">
             <ArrowLeft size={20} />

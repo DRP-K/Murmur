@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { X, Send, Image as ImageIcon, Users } from 'lucide-react'
-import { db, type LocalTag } from '@/lib/db'
 import { assistPost, uploadMedia } from '@/lib/relay'
 import { useAppStore } from '@/lib/store'
 import { fetchMediaImage, PostSuggestions, type Category, type SelectedSuggestion } from './PostSuggestions'
@@ -17,24 +16,15 @@ interface Props {
   onClose: () => void
   onSubmit: (
     content: string,
-    expiresAt: number | null,
-    audienceTagIds: string[] | null,
     category?: string | null,
     mediaRefName?: string | null,
     imageUrl?: string | null,
     attachments?: MediaItem[] | null,
-    scheduledAt?: number | null,
     rallyMaxMembers?: number | null,
   ) => Promise<void>
 }
 
 const CATEGORY_EMOJI: Record<string, string> = { movies: '🎬', music: '🎵', games: '🎮' }
-
-const EXPIRY_OPTIONS = [
-  { label: 'Never', value: null },
-  { label: '24 hours', value: 86400 },
-  { label: '7 days', value: 604800 },
-]
 
 interface AssistSuggestion {
   requestedPrefix: string
@@ -45,12 +35,8 @@ interface AssistSuggestion {
 
 export function ComposeSheet({ open, onClose, onSubmit }: Props) {
   const [content, setContent] = useState('')
-  const [expirySeconds, setExpirySeconds] = useState<number | null>(null)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [allTags, setAllTags] = useState<LocalTag[]>([])
-  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set())
-  const [audienceOpen, setAudienceOpen] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [mediaCategory, setMediaCategory] = useState<string | null>(null)
   const [mediaRefName, setMediaRefName] = useState<string | null>(null)
@@ -62,8 +48,6 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
   const [applyingHashCategory, setApplyingHashCategory] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
-  const [scheduleMode, setScheduleMode] = useState<'now' | '+1h' | '+4h' | '+1d' | 'custom'>('now')
-  const [customSchedule, setCustomSchedule] = useState<string>('')
   const [postMode, setPostMode] = useState<'anonymous' | 'rally'>('anonymous')
   const [rallyMaxMembers, setRallyMaxMembers] = useState(4)
   const [rallyInputValue, setRallyInputValue] = useState('4')
@@ -74,7 +58,6 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
 
   useEffect(() => {
     if (!open) return
-    db.tags.orderBy('name').toArray().then(setAllTags)
   }, [open])
 
   if (!open) return null
@@ -129,18 +112,6 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
   function setContentValue(value: string) {
     contentRef.current = value
     setContent(value)
-  }
-
-  function resolveScheduledAt(): number | null {
-    const now = Math.floor(Date.now() / 1000)
-    if (scheduleMode === '+1h') return now + 3600
-    if (scheduleMode === '+4h') return now + 4 * 3600
-    if (scheduleMode === '+1d') return now + 86400
-    if (scheduleMode === 'custom' && customSchedule) {
-      const t = Math.floor(new Date(customSchedule).getTime() / 1000)
-      return t > now ? t : null
-    }
-    return null
   }
 
   function handleContentChange(value: string) {
@@ -251,23 +222,6 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
     finally { setApplyingHashCategory(false) }
   }
 
-  function toggleTag(tagId: string) {
-    setSelectedTagIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(tagId)) {
-        next.delete(tagId)
-      } else {
-        next.add(tagId)
-      }
-      return next
-    })
-  }
-
-  function audienceLabel() {
-    if (selectedTagIds.size === 0) return 'Everyone'
-    const names = allTags.filter((t) => selectedTagIds.has(t.id)).map((t) => t.name)
-    return names.join(', ')
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -284,24 +238,15 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
         attachments = results.map((r) => ({ url: r.url, media_type: r.media_type }))
       }
 
-      const expiresAt = expirySeconds ? Math.floor(Date.now() / 1000) + expirySeconds : null
-      const tagIds = selectedTagIds.size > 0 ? [...selectedTagIds] : null
-      const scheduledAt = resolveScheduledAt()
       await onSubmit(
         content.trim(),
-        expiresAt,
-        tagIds,
         mediaCategory,
         mediaRefName,
         mediaImageUrl,
         attachments,
-        scheduledAt,
         postMode === 'rally' ? rallyMaxMembers : null,
       )
       setContentValue('')
-      setExpirySeconds(null)
-      setSelectedTagIds(new Set())
-      setAudienceOpen(false)
       setMediaCategory(null)
       setMediaRefName(null)
       setMediaImageUrl(null)
@@ -310,8 +255,6 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
       previewUrls.forEach((u) => URL.revokeObjectURL(u))
       setPendingFiles([])
       setPreviewUrls([])
-      setScheduleMode('now')
-      setCustomSchedule('')
       setPostMode('anonymous')
       setRallyMaxMembers(4)
       setRallyInputValue('4')
@@ -570,19 +513,6 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-zinc-400">Expires:</span>
-              <select
-                value={expirySeconds ?? ''}
-                onChange={(e) => setExpirySeconds(e.target.value ? Number(e.target.value) : null)}
-                className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-600 focus:outline-none"
-              >
-                {EXPIRY_OPTIONS.map((o) => (
-                  <option key={String(o.value)} value={o.value ?? ''}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -599,44 +529,6 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
             </div>
 
             <span className="text-xs text-zinc-400">{content.length}/500</span>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-xs text-zinc-400">Send:</span>
-            {(['now', '+1h', '+4h', '+1d'] as const).map((opt) => (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => { setScheduleMode(opt); setCustomSchedule('') }}
-                className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-                  scheduleMode === opt
-                    ? 'bg-zinc-900 text-white'
-                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
-                }`}
-              >
-                {opt === 'now' ? 'Now' : opt}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => setScheduleMode('custom')}
-              className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-                scheduleMode === 'custom'
-                  ? 'bg-zinc-900 text-white'
-                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
-              }`}
-            >
-              Custom
-            </button>
-            {scheduleMode === 'custom' && (
-              <input
-                type="datetime-local"
-                value={customSchedule}
-                min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
-                onChange={(e) => setCustomSchedule(e.target.value)}
-                className="rounded-lg border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-600 focus:outline-none"
-              />
-            )}
           </div>
 
           {error && <p className="text-xs text-red-500">{error}</p>}

@@ -23,14 +23,12 @@ export type ServerEnvelope =
       author_id: string
       content: string
       timestamp: number
-      expires_at: number | null
       category?: string | null
       media_ref_name?: string | null
       image_url?: string | null
       attachment_url?: string | null
       attachment_type?: 'image' | 'video' | null
       attachments?: MediaItem[] | null
-      scheduled_at?: number | null
       rally_group_id?: string | null
       rally_max_members?: number | null
     }
@@ -80,7 +78,6 @@ export interface CreatePostRequest {
   id: string
   content: string
   timestamp: number
-  expires_at: number | null
   recipient_ids: string[]
   category?: string | null
   media_ref_name?: string | null
@@ -88,7 +85,6 @@ export interface CreatePostRequest {
   attachment_url?: string | null
   attachment_type?: string | null
   attachments?: MediaItem[] | null
-  scheduled_at?: number | null
   rally?: {
     group_id: string
     max_members: number
@@ -124,7 +120,6 @@ export interface Post {
   author_id: string
   content: string
   timestamp: number
-  expires_at: number | null
   is_own: boolean
   category?: string | null
   media_ref_name?: string | null
@@ -132,7 +127,6 @@ export interface Post {
   attachment_url?: string | null
   attachment_type?: 'image' | 'video' | null
   attachments?: MediaItem[] | null
-  scheduled_at?: number | null
   rally_group_id?: string | null
   rally_max_members?: number | null
 }

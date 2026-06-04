@@ -165,7 +165,6 @@ pub fn ensure_rich_post_with_delivery(
                         posts::author_id.eq(post.author_id),
                         posts::content.eq(post.content),
                         posts::timestamp.eq(post.timestamp),
-                        posts::expires_at.eq(post.expires_at),
                         posts::category.eq(post.category),
                         posts::media_ref_name.eq(post.media_ref_name),
                         posts::image_url.eq(post.image_url),
@@ -232,18 +231,12 @@ pub fn get_post_delivery(
 pub fn list_pending_posts(
     conn: &mut SqliteConnection,
     recipient_id: &str,
-    now: i64,
+    _now: i64,
 ) -> QueryResult<Vec<Post>> {
     post_deliveries::table
         .inner_join(posts::table)
         .filter(post_deliveries::recipient_id.eq(recipient_id))
         .filter(post_deliveries::delivered_at.is_null())
-        .filter(posts::expires_at.is_null().or(posts::expires_at.gt(now)))
-        .filter(
-            posts::scheduled_at
-                .is_null()
-                .or(posts::scheduled_at.le(now)),
-        )
         .select(Post::as_select())
         .order(posts::timestamp.asc())
         .load(conn)
@@ -492,19 +485,6 @@ pub fn get_friendship(
         .first(conn)
 }
 
-pub fn list_due_scheduled_deliveries(
-    conn: &mut SqliteConnection,
-    now: i64,
-) -> QueryResult<Vec<(Post, String)>> {
-    post_deliveries::table
-        .inner_join(posts::table)
-        .filter(post_deliveries::delivered_at.is_null())
-        .filter(posts::scheduled_at.is_not_null())
-        .filter(posts::scheduled_at.le(now))
-        .select((Post::as_select(), post_deliveries::recipient_id))
-        .load(conn)
-}
-
 #[cfg(test)]
 mod tests {
     use diesel::dsl::count_star;
@@ -518,8 +498,7 @@ mod tests {
     use super::{
         ack_message, ack_message_for_recipient, add_friendship_edge, add_friendship_pair,
         create_post_with_deliveries, enqueue_message, get_friendship, get_post_delivery,
-        list_due_scheduled_deliveries, list_pending_messages, list_pending_posts,
-        mark_post_delivered, register_user,
+        list_pending_messages, mark_post_delivered, register_user,
     };
     use crate::db::models::NewPost;
 
@@ -647,14 +626,12 @@ mod tests {
             author_id: "u1",
             content: "hello",
             timestamp: 1000,
-            expires_at: None,
             category: None,
             image_url: None,
             media_ref_name: None,
             attachment_url: None,
             attachment_type: None,
             attachments: None,
-            scheduled_at: None,
             rally_group_id: None,
             rally_max_members: None,
         };
@@ -672,54 +649,6 @@ mod tests {
 
         let after = get_post_delivery(&mut conn, "p1", "u2").expect("delivery should exist");
         assert_eq!(after.delivered_at, Some(2000));
-    }
-
-    #[test]
-    fn pending_posts_filter_expired_posts() {
-        let mut conn = setup_conn();
-        register_user(&mut conn, "u1", "pk1", 100).expect("author should exist");
-        register_user(&mut conn, "u2", "pk2", 100).expect("recipient should exist");
-
-        let fresh = NewPost {
-            id: "fresh",
-            author_id: "u1",
-            content: "fresh",
-            timestamp: 1000,
-            expires_at: Some(2_000),
-            category: None,
-            image_url: None,
-            media_ref_name: None,
-            attachment_url: None,
-            attachment_type: None,
-            attachments: None,
-            scheduled_at: None,
-            rally_group_id: None,
-            rally_max_members: None,
-        };
-        let expired = NewPost {
-            id: "expired",
-            author_id: "u1",
-            content: "expired",
-            timestamp: 999,
-            expires_at: Some(1_000),
-            category: None,
-            image_url: None,
-            media_ref_name: None,
-            attachment_url: None,
-            attachment_type: None,
-            attachments: None,
-            scheduled_at: None,
-            rally_group_id: None,
-            rally_max_members: None,
-        };
-
-        create_post_with_deliveries(&mut conn, &fresh, &["u2"]).expect("fresh fan-out should work");
-        create_post_with_deliveries(&mut conn, &expired, &["u2"])
-            .expect("expired fan-out should work");
-
-        let posts = list_pending_posts(&mut conn, "u2", 1_500).expect("pending posts should list");
-        assert_eq!(posts.len(), 1);
-        assert_eq!(posts[0].id, "fresh");
     }
 
     #[test]
@@ -776,73 +705,5 @@ mod tests {
         let inserted_again = add_friendship_pair(&mut conn, "u1", "u2", 112)
             .expect("pair insert should be idempotent");
         assert_eq!(inserted_again, 0);
-    }
-
-    fn scheduled_post(id: &'static str, scheduled_at: Option<i64>) -> NewPost<'static> {
-        NewPost {
-            id,
-            author_id: "u1",
-            content: "scheduled",
-            timestamp: 1000,
-            expires_at: None,
-            category: None,
-            image_url: None,
-            media_ref_name: None,
-            attachment_url: None,
-            attachment_type: None,
-            attachments: None,
-            scheduled_at,
-            rally_group_id: None,
-            rally_max_members: None,
-        }
-    }
-
-    #[test]
-    fn scheduled_post_hidden_before_due_time() {
-        let mut conn = setup_conn();
-        register_user(&mut conn, "u1", "pk1", 100).expect("author");
-        register_user(&mut conn, "u2", "pk2", 100).expect("recipient");
-
-        create_post_with_deliveries(&mut conn, &scheduled_post("p1", Some(2_000)), &["u2"])
-            .expect("fanout");
-
-        let posts = list_pending_posts(&mut conn, "u2", 1_500).expect("list");
-        assert!(
-            posts.is_empty(),
-            "post should not appear before scheduled_at"
-        );
-    }
-
-    #[test]
-    fn scheduled_post_visible_after_due_time() {
-        let mut conn = setup_conn();
-        register_user(&mut conn, "u1", "pk1", 100).expect("author");
-        register_user(&mut conn, "u2", "pk2", 100).expect("recipient");
-
-        create_post_with_deliveries(&mut conn, &scheduled_post("p1", Some(1_000)), &["u2"])
-            .expect("fanout");
-
-        let posts = list_pending_posts(&mut conn, "u2", 1_500).expect("list");
-        assert_eq!(posts.len(), 1);
-        assert_eq!(posts[0].id, "p1");
-    }
-
-    #[test]
-    fn list_due_scheduled_deliveries_returns_only_due_posts() {
-        let mut conn = setup_conn();
-        register_user(&mut conn, "u1", "pk1", 100).expect("author");
-        register_user(&mut conn, "u2", "pk2", 100).expect("recipient");
-
-        create_post_with_deliveries(&mut conn, &scheduled_post("due", Some(1_000)), &["u2"])
-            .expect("fanout due");
-        create_post_with_deliveries(&mut conn, &scheduled_post("future", Some(3_000)), &["u2"])
-            .expect("fanout future");
-        create_post_with_deliveries(&mut conn, &scheduled_post("immediate", None), &["u2"])
-            .expect("fanout immediate");
-
-        let deliveries = list_due_scheduled_deliveries(&mut conn, 2_000).expect("list");
-        assert_eq!(deliveries.len(), 1);
-        assert_eq!(deliveries[0].0.id, "due");
-        assert_eq!(deliveries[0].1, "u2");
     }
 }

@@ -48,13 +48,10 @@ export interface StoredPost {
   author_id: string
   content: string
   timestamp: number
-  expires_at: number | null
   is_own: boolean
-  audienceTagIds?: string[]  // local-only; never transmitted to relay
   category?: string | null
   media_ref_name?: string | null
   image_url?: string | null
-  scheduled_at?: number | null
   rally_group_id?: string | null
   rally_max_members?: number | null
 }
@@ -160,10 +157,16 @@ class MurmurDatabase extends Dexie {
       friends: 'userId, blockedAt, metAtEvent',
     })
     this.version(9).stores({
-      posts: 'id, timestamp, category, scheduled_at',
+      posts: 'id, timestamp, category',
     })
     this.version(10).stores({
-      posts: 'id, timestamp, category, scheduled_at, rally_group_id',
+      posts: 'id, timestamp, category, rally_group_id',
+      groups: 'id, createdAt',
+      groupMembers: 'id, groupId, userId',
+      groupMessages: 'id, groupId, sentAt',
+    })
+    this.version(11).stores({
+      posts: 'id, timestamp, category, rally_group_id',
       groups: 'id, createdAt',
       groupMembers: 'id, groupId, userId',
       groupMessages: 'id, groupId, sentAt',

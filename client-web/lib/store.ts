@@ -78,7 +78,6 @@ function postsMatch(a: Post, b: Post): boolean {
     a.author_id === b.author_id &&
     a.content === b.content &&
     a.timestamp === b.timestamp &&
-    a.expires_at === b.expires_at &&
     a.is_own === b.is_own &&
     a.category === b.category &&
     a.media_ref_name === b.media_ref_name &&

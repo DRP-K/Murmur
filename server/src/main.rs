@@ -1,4 +1,4 @@
-use murmur_server::app::{AppState, router, start_scheduler};
+use murmur_server::app::{AppState, router};
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
@@ -33,7 +33,6 @@ async fn main() {
         }
     };
 
-    start_scheduler(state.clone());
     info!(bind_addr = %bind_addr, "murmur server listening");
 
     if let Err(err) = axum::serve(listener, router(state)).await {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { X, Send, Sparkles, Image as ImageIcon, Users } from 'lucide-react'
+import { X, Send, Hash, Image as ImageIcon, Users } from 'lucide-react'
 import { db, type LocalTag } from '@/lib/db'
 import { assistPost, uploadMedia } from '@/lib/relay'
 import { useAppStore } from '@/lib/store'
@@ -80,6 +80,7 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
     assistSuggestion && assistSuggestion.completedContent !== content
       ? assistSuggestion.completedContent
       : ''
+  const canRephrase = content.trim().split(/\s+/).filter(Boolean).length >= 2
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     if (!fileInputRef.current) return
@@ -338,33 +339,37 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
               placeholder="What's on your mind?"
               rows={4}
               maxLength={500}
-              className="relative w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 pr-20 text-sm leading-normal text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none"
+              className="relative w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 pr-24 text-sm leading-normal text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none"
             />
-            <button
-              type="button"
-              onClick={requestAssist}
-              disabled={assisting || !content.trim()}
-              title="Expand post"
-              className={`absolute right-10 top-2 rounded-lg px-1.5 py-1 text-[10px] font-semibold transition-colors ${
-                assisting
-                  ? 'bg-zinc-100 text-zinc-400'
-                  : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 disabled:bg-zinc-100 disabled:text-zinc-300'
-              }`}
-            >
-              {assisting ? '...' : 'AI'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowSuggestions((v) => !v)}
-              title="Get inspired"
-              className={`absolute right-2 top-2 rounded-lg p-1.5 transition-colors ${
-                showSuggestions
-                  ? 'bg-zinc-900 text-white'
-                  : 'text-zinc-400 hover:text-zinc-600'
-              }`}
-            >
-              <Sparkles size={15} />
-            </button>
+            <div className="absolute right-2 top-2 flex flex-col items-end gap-1">
+              <button
+                type="button"
+                onClick={requestAssist}
+                disabled={assisting || !canRephrase}
+                title="Rephrase post"
+                className={`rounded-lg border px-2 py-1 text-[10px] font-semibold transition-colors ${
+                  assisting
+                    ? 'border-zinc-200 bg-zinc-100 text-zinc-400'
+                    : canRephrase
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                      : 'border-zinc-200 bg-zinc-100 text-zinc-300'
+                }`}
+              >
+                {assisting ? '...' : 'Rephrase'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSuggestions((v) => !v)}
+                title="Choose category"
+                className={`rounded-lg border p-1.5 transition-colors ${
+                  showSuggestions
+                    ? 'border-zinc-900 bg-zinc-900 text-white'
+                    : 'border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300 hover:text-zinc-900'
+                }`}
+              >
+                <Hash size={15} />
+              </button>
+            </div>
           </div>
 
           {(expandedSuggestion || (assistSuggestion?.category && assistSuggestion.mediaRefName)) && (

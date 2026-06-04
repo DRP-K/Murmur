@@ -64,6 +64,7 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
   const [customSchedule, setCustomSchedule] = useState<string>('')
   const [postMode, setPostMode] = useState<'anonymous' | 'rally'>('anonymous')
   const [rallyMaxMembers, setRallyMaxMembers] = useState(4)
+  const [rallyInputValue, setRallyInputValue] = useState('4')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const assistRequestRef = useRef(0)
   const contentRef = useRef('')
@@ -279,6 +280,7 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
       setCustomSchedule('')
       setPostMode('anonymous')
       setRallyMaxMembers(4)
+      setRallyInputValue('4')
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to post')
@@ -455,15 +457,56 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
                 <Users size={14} />
                 <span>Group size</span>
               </div>
-              <select
-                value={rallyMaxMembers}
-                onChange={(e) => setRallyMaxMembers(Number(e.target.value))}
-                className="rounded-lg border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 focus:outline-none"
+              <div
+                className="flex items-center gap-1"
+                onWheel={(e) => {
+                  e.preventDefault()
+                  setRallyMaxMembers((v) => {
+                    const next = Math.min(20, Math.max(2, v + (e.deltaY < 0 ? 1 : -1)))
+                    setRallyInputValue(String(next))
+                    return next
+                  })
+                }}
               >
-                {Array.from({ length: 19 }, (_, i) => i + 2).map((n) => (
-                  <option key={n} value={n}>{n} people</option>
-                ))}
-              </select>
+                <button
+                  type="button"
+                  onClick={() => setRallyMaxMembers((v) => {
+                    const next = Math.max(2, v - 1)
+                    setRallyInputValue(String(next))
+                    return next
+                  })}
+                  className="flex h-6 w-6 items-center justify-center rounded-md border border-zinc-200 bg-white text-sm text-zinc-500 hover:bg-zinc-100 disabled:opacity-30"
+                  disabled={rallyMaxMembers <= 2}
+                >
+                  −
+                </button>
+                <input
+                  type="number"
+                  min={2}
+                  max={20}
+                  value={rallyInputValue}
+                  onChange={(e) => setRallyInputValue(e.target.value)}
+                  onBlur={() => {
+                    const v = parseInt(rallyInputValue, 10)
+                    const clamped = isNaN(v) || v < 2 ? 2 : Math.min(20, v)
+                    setRallyMaxMembers(clamped)
+                    setRallyInputValue(String(clamped))
+                  }}
+                  className="w-16 rounded-md border border-zinc-200 bg-white py-0.5 text-center text-xs text-zinc-700 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setRallyMaxMembers((v) => {
+                    const next = Math.min(20, v + 1)
+                    setRallyInputValue(String(next))
+                    return next
+                  })}
+                  className="flex h-6 w-6 items-center justify-center rounded-md border border-zinc-200 bg-white text-sm text-zinc-500 hover:bg-zinc-100 disabled:opacity-30"
+                  disabled={rallyMaxMembers >= 20}
+                >
+                  +
+                </button>
+              </div>
             </div>
           )}
 

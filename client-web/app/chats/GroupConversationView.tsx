@@ -1,13 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, Send, X, Users } from 'lucide-react'
+import { ArrowLeft, Users } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { ackGroupMessage, getGroupMessages, sendGroupMessage } from '@/lib/relay'
 import { decodePayload, encodePayload } from '@/lib/crypto'
 import { db } from '@/lib/db'
+import { ChatComposer } from '@/components/ChatComposer'
 import { MessageBubble } from '@/components/MessageBubble'
 
 interface GroupConversationPageProps {
@@ -76,8 +76,7 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  async function handleSend(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleSend() {
     const text = input.trim()
     if (!text || !token || !userId || !groupId) return
     setSending(true)
@@ -162,28 +161,14 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
         <div ref={bottomRef} />
       </main>
 
-      <form
+      <ChatComposer
+        value={input}
+        onChange={setInput}
         onSubmit={handleSend}
-        className={`flex items-end gap-2 border-t border-zinc-200 bg-white p-4 ${mobileComposerOffset} ${railOffset}`}
-      >
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e) }
-          }}
-          placeholder="Message the group..."
-          rows={1}
-          className="flex-1 resize-none rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none"
-        />
-        <button
-          type="submit"
-          disabled={sending || !input.trim()}
-          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition-opacity disabled:opacity-40"
-        >
-          <Send size={16} />
-        </button>
-      </form>
+        sending={sending}
+        placeholder="Message the group..."
+        className={`${mobileComposerOffset} ${railOffset}`}
+      />
     </>
   )
 }

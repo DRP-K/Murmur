@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { X, Send, Hash, Image as ImageIcon, Users } from 'lucide-react'
+import { X, Send, Image as ImageIcon, Users } from 'lucide-react'
 import { assistPost, uploadMedia } from '@/lib/relay'
 import { useAppStore } from '@/lib/store'
 import { fetchMediaImage, PostSuggestions, type Category, type SelectedSuggestion } from './PostSuggestions'
@@ -44,17 +44,20 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
   const [assistSuggestion, setAssistSuggestion] = useState<AssistSuggestion | null>(null)
   const [assisting, setAssisting] = useState(false)
   const [applyingAssistMedia, setApplyingAssistMedia] = useState(false)
+  const [hashCategory, setHashCategory] = useState<{ category: Category; mediaRefName: string } | null>(null)
+  const [applyingHashCategory, setApplyingHashCategory] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
   const [postMode, setPostMode] = useState<'anonymous' | 'rally'>('anonymous')
   const [rallyMaxMembers, setRallyMaxMembers] = useState(4)
+  const [rallyInputValue, setRallyInputValue] = useState('4')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const assistRequestRef = useRef(0)
+  const hashAssistRef = useRef(0)
   const contentRef = useRef('')
 
   useEffect(() => {
     if (!open) return
-    setShowSuggestions(true)
   }, [open])
 
   if (!open) return null
@@ -118,6 +121,7 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
       if (suggestion.requestedPrefix !== value.trim()) return null
       return suggestion
     })
+    setHashCategory(null)
   }
 
   async function requestAssist() {
@@ -188,6 +192,37 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
     }
   }
 
+  async function requestHashAssist() {
+    const outline = contentRef.current.trim()
+    if (outline.split(/\s+/).filter(Boolean).length < 2) return
+    const token = useAppStore.getState().token
+    if (!token) return
+    const reqId = ++hashAssistRef.current
+    try {
+      const suggestion = await assistPost(token, outline)
+      if (hashAssistRef.current !== reqId) return
+      if (suggestion.category && suggestion.media_ref_name)
+        setHashCategory({ category: suggestion.category, mediaRefName: suggestion.media_ref_name })
+    } catch { /* silent */ }
+  }
+
+  async function applyHashCategory() {
+    if (!hashCategory) return
+    const { category, mediaRefName: refName } = hashCategory
+    setMediaCategory(category)
+    setMediaRefName(refName)
+    setMediaImageUrl(null)
+    setHashCategory(null)
+    setShowSuggestions(false)
+    setApplyingHashCategory(true)
+    try {
+      const url = await fetchMediaImage(category, refName)
+      setMediaImageUrl(url)
+    } catch { setMediaImageUrl(null) }
+    finally { setApplyingHashCategory(false) }
+  }
+
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!content.trim()) return
@@ -216,11 +251,13 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
       setMediaRefName(null)
       setMediaImageUrl(null)
       setAssistSuggestion(null)
+      setHashCategory(null)
       previewUrls.forEach((u) => URL.revokeObjectURL(u))
       setPendingFiles([])
       setPreviewUrls([])
       setPostMode('anonymous')
       setRallyMaxMembers(4)
+      setRallyInputValue('4')
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to post')
@@ -233,8 +270,10 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
       <div className="w-full max-w-md rounded-t-2xl bg-white p-6 shadow-xl sm:rounded-2xl">
         <div className="mb-4 flex items-center justify-between">
-          <span className="text-sm font-semibold text-zinc-500">
-            {postMode === 'rally' ? 'New rally post' : 'New anonymous post'}
+          <span className="text-xs text-zinc-400">
+            {postMode === 'rally'
+              ? 'Form a group to talk about a shared interest.'
+              : 'Post anonymously — readers can reach out and DM you.'}
           </span>
           <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600">
             <X size={18} />
@@ -259,7 +298,7 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
                 postMode === 'anonymous' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500'
               }`}
             >
-              Anonymous
+              Individual
             </button>
             <button
               type="button"
@@ -301,15 +340,24 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
               </button>
               <button
                 type="button"
-                onClick={() => setShowSuggestions((v) => !v)}
-                title="Choose category"
-                className={`rounded-lg border p-1.5 transition-colors ${
+                onClick={() => {
+                  const opening = !showSuggestions
+                  setShowSuggestions((v) => !v)
+                  if (opening && canRephrase) {
+                    setHashCategory(null)
+                    requestHashAssist()
+                  } else if (!opening) {
+                    setHashCategory(null)
+                  }
+                }}
+                title="Choose topic"
+                className={`rounded-lg border px-2 py-1 text-[10px] font-semibold transition-colors ${
                   showSuggestions
                     ? 'border-zinc-900 bg-zinc-900 text-white'
                     : 'border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300 hover:text-zinc-900'
                 }`}
               >
-                <Hash size={15} />
+                Topic
               </button>
             </div>
           </div>
@@ -379,16 +427,29 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
           )}
 
           {showSuggestions && (
-            <PostSuggestions
-              onSelect={(s: SelectedSuggestion) => {
-                setContentValue(s.text)
-                setMediaCategory(s.category)
-                setMediaRefName(s.mediaRefName)
-                setMediaImageUrl(s.imageUrl)
-                setAssistSuggestion(null)
-                setShowSuggestions(false)
-              }}
-            />
+            <div className="flex flex-col gap-2">
+              {hashCategory && (
+                <button
+                  type="button"
+                  onClick={applyHashCategory}
+                  disabled={applyingHashCategory}
+                  className="self-start rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-200 disabled:opacity-60"
+                >
+                  {CATEGORY_EMOJI[hashCategory.category]} {hashCategory.mediaRefName}
+                  {applyingHashCategory ? ' ...' : ''}
+                </button>
+              )}
+              <PostSuggestions
+                onSelect={(s: SelectedSuggestion) => {
+                  setMediaCategory(s.category)
+                  setMediaRefName(s.mediaRefName)
+                  setMediaImageUrl(s.imageUrl)
+                  setAssistSuggestion(null)
+                  setHashCategory(null)
+                  setShowSuggestions(false)
+                }}
+              />
+            </div>
           )}
 
           {postMode === 'rally' && (
@@ -397,15 +458,56 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
                 <Users size={14} />
                 <span>Group size</span>
               </div>
-              <select
-                value={rallyMaxMembers}
-                onChange={(e) => setRallyMaxMembers(Number(e.target.value))}
-                className="rounded-lg border border-zinc-200 bg-white px-2 py-1 text-xs text-zinc-700 focus:outline-none"
+              <div
+                className="flex items-center gap-1"
+                onWheel={(e) => {
+                  e.preventDefault()
+                  setRallyMaxMembers((v) => {
+                    const next = Math.min(20, Math.max(2, v + (e.deltaY < 0 ? 1 : -1)))
+                    setRallyInputValue(String(next))
+                    return next
+                  })
+                }}
               >
-                {Array.from({ length: 19 }, (_, i) => i + 2).map((n) => (
-                  <option key={n} value={n}>{n} people</option>
-                ))}
-              </select>
+                <button
+                  type="button"
+                  onClick={() => setRallyMaxMembers((v) => {
+                    const next = Math.max(2, v - 1)
+                    setRallyInputValue(String(next))
+                    return next
+                  })}
+                  className="flex h-6 w-6 items-center justify-center rounded-md border border-zinc-200 bg-white text-sm text-zinc-500 hover:bg-zinc-100 disabled:opacity-30"
+                  disabled={rallyMaxMembers <= 2}
+                >
+                  −
+                </button>
+                <input
+                  type="number"
+                  min={2}
+                  max={20}
+                  value={rallyInputValue}
+                  onChange={(e) => setRallyInputValue(e.target.value)}
+                  onBlur={() => {
+                    const v = parseInt(rallyInputValue, 10)
+                    const clamped = isNaN(v) || v < 2 ? 2 : Math.min(20, v)
+                    setRallyMaxMembers(clamped)
+                    setRallyInputValue(String(clamped))
+                  }}
+                  className="w-16 rounded-md border border-zinc-200 bg-white py-0.5 text-center text-xs text-zinc-700 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setRallyMaxMembers((v) => {
+                    const next = Math.min(20, v + 1)
+                    setRallyInputValue(String(next))
+                    return next
+                  })}
+                  className="flex h-6 w-6 items-center justify-center rounded-md border border-zinc-200 bg-white text-sm text-zinc-500 hover:bg-zinc-100 disabled:opacity-30"
+                  disabled={rallyMaxMembers >= 20}
+                >
+                  +
+                </button>
+              </div>
             </div>
           )}
 

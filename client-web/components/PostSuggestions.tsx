@@ -29,21 +29,6 @@ interface GameItem {
 
 type AnyItem = MovieItem | MusicItem | GameItem
 
-function buildTemplate(category: Category, item: AnyItem): string {
-  if (category === 'movies') {
-    const m = item as MovieItem
-    const year = m.year ? ` (${m.year})` : ''
-    const snippet = m.overview ? ' — ' + m.overview.slice(0, 120).trimEnd() + (m.overview.length > 120 ? '…' : '') : ''
-    return `Just watched ${m.title}${year}${snippet} 🎬`
-  }
-  if (category === 'music') {
-    const s = item as MusicItem
-    return `Can't stop listening to "${s.track}" by ${s.artist} 🎵`
-  }
-  const g = item as GameItem
-  const genrePart = g.genres ? ` (${g.genres})` : ''
-  return `Recently playing ${g.name}${genrePart} 🎮`
-}
 
 function itemLabel(category: Category, item: AnyItem): string {
   if (category === 'movies') return (item as MovieItem).title
@@ -67,7 +52,6 @@ const TABS: { key: Category; label: string }[] = [
 ]
 
 export interface SelectedSuggestion {
-  text: string
   category: Category
   mediaRefName: string
   imageUrl: string | null
@@ -234,7 +218,7 @@ export function PostSuggestions({ onSelect }: Props) {
                     tab === 'movies' ? (item as MovieItem).title
                     : tab === 'music' ? (item as MusicItem).track
                     : (item as GameItem).name
-                  onSelect({ text: buildTemplate(tab, item), category: tab, mediaRefName, imageUrl: itemImage(tab, item) })
+                  onSelect({ category: tab, mediaRefName, imageUrl: itemImage(tab, item) })
                 }}
                 className="flex-shrink-0 w-20 rounded-lg overflow-hidden border border-zinc-200 bg-white hover:border-zinc-400 transition-colors text-left"
               >

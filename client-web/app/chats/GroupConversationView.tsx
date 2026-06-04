@@ -121,7 +121,6 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
   const mobileComposerOffset = embedded
     ? ''
     : 'sticky bottom-0 z-10 w-full max-w-md md:static md:max-w-none md:translate-x-0 landscape:static landscape:max-w-none landscape:translate-x-0'
-  const messageBottomPadding = embedded ? '' : 'pb-24 md:pb-4 landscape:pb-4'
   const title = group?.title || 'Group'
   const memberText = group ? `${group.members.length}/${group.maxMembers}` : ''
 
@@ -147,7 +146,7 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
         </div>
       </header>
 
-      <main className={`flex flex-1 flex-col gap-2 overflow-y-auto p-4 ${messageBottomPadding} ${railOffset}`}>
+      <main className={`flex flex-1 flex-col gap-2 overflow-y-auto p-4 ${railOffset}`}>
         {messages.map((m) => (
           <MessageBubble
             key={m.id}

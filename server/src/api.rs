@@ -395,14 +395,12 @@ pub async fn post_post(
         author_id: &author_id,
         content: &payload.content,
         timestamp: payload.timestamp,
-        expires_at: payload.expires_at,
         category: payload.category.as_deref(),
         media_ref_name: payload.media_ref_name.as_deref(),
         image_url: payload.image_url.as_deref(),
         attachment_url: payload.attachment_url.as_deref(),
         attachment_type: payload.attachment_type.as_deref(),
         attachments: attachments_json.as_deref(),
-        scheduled_at: payload.scheduled_at,
         rally_group_id: payload.rally.as_ref().map(|r| r.group_id.as_str()),
         rally_max_members: payload.rally.as_ref().map(|r| r.max_members),
     };
@@ -450,37 +448,30 @@ pub async fn post_post(
         author_id,
         content: payload.content,
         timestamp: payload.timestamp,
-        expires_at: payload.expires_at,
         category: payload.category,
         media_ref_name: payload.media_ref_name,
         image_url: payload.image_url,
         attachment_url: payload.attachment_url,
         attachment_type: payload.attachment_type,
         attachments: payload.attachments,
-        scheduled_at: payload.scheduled_at,
         rally_group_id: payload.rally.as_ref().map(|r| r.group_id.clone()),
         rally_max_members: payload.rally.as_ref().map(|r| r.max_members),
     };
 
-    let publish_now = payload.scheduled_at.map_or(true, |t| t <= now_ts());
-    if publish_now {
-        for recipient_id in payload.recipient_ids {
-            if state.send_to_online(&recipient_id, envelope.clone()) {
-                info!(
-                    post_id = %payload.id,
-                    recipient_id = %recipient_id,
-                    "post notified live (pending client ack)"
-                );
-            } else {
-                debug!(
-                    post_id = %payload.id,
-                    recipient_id = %recipient_id,
-                    "post remains pending"
-                );
-            }
+    for recipient_id in payload.recipient_ids {
+        if state.send_to_online(&recipient_id, envelope.clone()) {
+            info!(
+                post_id = %payload.id,
+                recipient_id = %recipient_id,
+                "post notified live (pending client ack)"
+            );
+        } else {
+            debug!(
+                post_id = %payload.id,
+                recipient_id = %recipient_id,
+                "post remains pending"
+            );
         }
-    } else {
-        info!(post_id = %payload.id, scheduled_at = ?payload.scheduled_at, "post scheduled for future delivery");
     }
 
     info!(post_id = %payload.id, "post fanout recorded");

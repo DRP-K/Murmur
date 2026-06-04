@@ -1,10 +1,9 @@
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use diesel::prelude::*;
 use ed25519_dalek::{Signer, SigningKey};
 use futures_util::StreamExt;
 use http_body_util::BodyExt;
-use murmur_server::app::{AppState, router, scheduler_tick};
+use murmur_server::app::{AppState, router};
 use murmur_server::auth::user_id_for_pubkey;
 use murmur_server::wire::{AuthResponse, FriendListResponse, ServerEnvelope};
 use serde_json::{Value, json};
@@ -122,28 +121,6 @@ async fn spawn_server() -> (String, tokio::task::JoinHandle<()>) {
     });
 
     (format!("http://{addr}"), handle)
-}
-
-async fn spawn_server_with_state() -> (String, AppState, tokio::task::JoinHandle<()>) {
-    let db = tempfile::NamedTempFile::new().expect("temp db should be created");
-    let path = db
-        .into_temp_path()
-        .keep()
-        .expect("temp db path should persist");
-    let state =
-        AppState::from_database_url_without_ai(path.to_str().expect("temp path should be utf8"))
-            .expect("app state should initialize");
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("listener should bind");
-    let addr = listener
-        .local_addr()
-        .expect("local addr should be available");
-    let handle = tokio::spawn({
-        let app = router(state.clone());
-        async move { axum::serve(listener, app).await.expect("server should run") }
-    });
-    (format!("http://{addr}"), state, handle)
 }
 
 async fn register_user_http(client: &reqwest::Client, base: &str, user: &TestUser) {
@@ -278,7 +255,6 @@ async fn post_fanout_and_friend_add() {
             "id": "p1",
             "content": "hello feed",
             "timestamp": 1000,
-            "expires_at": null,
             "recipient_ids": [bob.user_id, carol.user_id],
         }),
     )
@@ -357,7 +333,6 @@ async fn rally_post_creates_group_and_group_messages_flow() {
             "id": "rally-post",
             "content": "Portal 2 tonight?",
             "timestamp": 1000,
-            "expires_at": null,
             "recipient_ids": [bob.user_id, carol.user_id],
             "rally": { "group_id": "group-1", "max_members": 2 },
         }),
@@ -510,7 +485,6 @@ async fn group_join_pushes_member_count_update_to_online_members() {
             "id": "rally-update-post",
             "content": "Join this lobby",
             "timestamp": 1000,
-            "expires_at": null,
             "recipient_ids": [bob.user_id],
             "rally": { "group_id": "group-update", "max_members": 4 },
         }))
@@ -1063,203 +1037,6 @@ async fn new_user_gets_seeded_friends_posts_and_welcome_messages() {
         3,
         "one dm welcome per bot"
     );
-}
-
-#[tokio::test]
-async fn scheduled_post_is_hidden_until_due() {
-    let app = app();
-    let alice = test_user(40);
-    let bob = test_user(41);
-    register_user(app.clone(), &alice).await;
-    register_user(app.clone(), &bob).await;
-    let alice_token = auth_user(app.clone(), &alice).await;
-    let bob_token = auth_user(app.clone(), &bob).await;
-
-    let future_ts = chrono::Utc::now().timestamp() + 3600;
-    let past_ts = chrono::Utc::now().timestamp() - 10;
-
-    // Post scheduled 1 hour from now — Bob should not see it yet.
-    let resp = request(
-        app.clone(),
-        "POST",
-        "/api/posts",
-        Some(&alice_token),
-        json!({
-            "id": "sched-future",
-            "content": "future",
-            "timestamp": chrono::Utc::now().timestamp(),
-            "expires_at": null,
-            "recipient_ids": [bob.user_id],
-            "scheduled_at": future_ts,
-        }),
-    )
-    .await;
-    assert_eq!(resp.status(), StatusCode::ACCEPTED);
-
-    let body = request(
-        app.clone(),
-        "GET",
-        "/api/posts",
-        Some(&bob_token),
-        json!({}),
-    )
-    .await
-    .into_body()
-    .collect()
-    .await
-    .expect("body")
-    .to_bytes();
-    let pulled: Value = serde_json::from_slice(&body).expect("posts response");
-    let ids: Vec<&str> = pulled["posts"]
-        .as_array()
-        .expect("posts array")
-        .iter()
-        .filter_map(|p| p["id"].as_str())
-        .collect();
-    assert!(
-        !ids.contains(&"sched-future"),
-        "future-scheduled post must not appear before due"
-    );
-
-    // Post scheduled 10 seconds ago — Bob should see it immediately via HTTP pull.
-    let resp = request(
-        app.clone(),
-        "POST",
-        "/api/posts",
-        Some(&alice_token),
-        json!({
-            "id": "sched-past",
-            "content": "past",
-            "timestamp": chrono::Utc::now().timestamp(),
-            "expires_at": null,
-            "recipient_ids": [bob.user_id],
-            "scheduled_at": past_ts,
-        }),
-    )
-    .await;
-    assert_eq!(resp.status(), StatusCode::ACCEPTED);
-
-    let body = request(
-        app.clone(),
-        "GET",
-        "/api/posts",
-        Some(&bob_token),
-        json!({}),
-    )
-    .await
-    .into_body()
-    .collect()
-    .await
-    .expect("body")
-    .to_bytes();
-    let pulled: Value = serde_json::from_slice(&body).expect("posts response");
-    let ids: Vec<&str> = pulled["posts"]
-        .as_array()
-        .expect("posts array")
-        .iter()
-        .filter_map(|p| p["id"].as_str())
-        .collect();
-    assert!(
-        ids.contains(&"sched-past"),
-        "past-scheduled post should appear after due time"
-    );
-    assert!(
-        !ids.contains(&"sched-future"),
-        "future-scheduled post must still not appear"
-    );
-}
-
-#[tokio::test]
-async fn scheduler_tick_pushes_due_post_to_online_recipient() {
-    let (base, state, handle) = spawn_server_with_state().await;
-    let client = reqwest::Client::new();
-    let alice = test_user(50);
-    let bob = test_user(51);
-    register_user_http(&client, &base, &alice).await;
-    register_user_http(&client, &base, &bob).await;
-    let alice_token = auth_user_http(&client, &base, &alice).await;
-    let bob_token = auth_user_http(&client, &base, &bob).await;
-
-    let future_ts = chrono::Utc::now().timestamp() + 3600;
-
-    // Alice creates a post scheduled in the future — Bob is offline so no live push,
-    // and the list_pending_posts filter will exclude it until due.
-    let resp = client
-        .post(format!("{base}/api/posts"))
-        .bearer_auth(&alice_token)
-        .json(&json!({
-            "id": "sched-tick",
-            "content": "tick test",
-            "timestamp": chrono::Utc::now().timestamp(),
-            "expires_at": null,
-            "recipient_ids": [bob.user_id],
-            "scheduled_at": future_ts,
-        }))
-        .send()
-        .await
-        .expect("post request");
-    assert_eq!(resp.status(), StatusCode::ACCEPTED);
-
-    // Bob connects. The initial WS drain should not include the future-scheduled post.
-    let ws_base = base.replace("http://", "ws://");
-    let (mut bob_ws, _) = connect_async(format!("{ws_base}/api/ws?token={bob_token}"))
-        .await
-        .expect("bob ws should connect");
-
-    // Confirm the initial drain sent no posts (only seed messages may arrive; skip them).
-    // We check the HTTP pull endpoint to confirm it's empty for the scheduled post.
-    let body: Value = client
-        .get(format!("{base}/api/posts"))
-        .bearer_auth(&bob_token)
-        .send()
-        .await
-        .expect("get posts")
-        .json()
-        .await
-        .expect("posts json");
-    let ids: Vec<&str> = body["posts"]
-        .as_array()
-        .expect("posts array")
-        .iter()
-        .filter_map(|p| p["id"].as_str())
-        .collect();
-    assert!(
-        !ids.contains(&"sched-tick"),
-        "future-scheduled post must not appear in pull"
-    );
-
-    // Simulate the scheduled time arriving: update the post's scheduled_at to the past
-    // via the DB pool, then run a scheduler tick.
-    {
-        let mut conn = state.pool.get().expect("pool connection");
-        diesel::update(
-            murmur_server::db::schema::posts::table
-                .filter(murmur_server::db::schema::posts::id.eq("sched-tick")),
-        )
-        .set(murmur_server::db::schema::posts::scheduled_at.eq(chrono::Utc::now().timestamp() - 1))
-        .execute(&mut conn)
-        .expect("update scheduled_at");
-    }
-
-    scheduler_tick(&state).await;
-
-    // Bob should now receive the post via WS (skipping over any seed messages that arrived).
-    let received = loop {
-        let msg = timeout(Duration::from_secs(2), bob_ws.next())
-            .await
-            .expect("bob should receive a message within 2s")
-            .expect("stream open")
-            .expect("message ok");
-        let Message::Text(text) = msg else { continue };
-        let env: ServerEnvelope = serde_json::from_str(&text).expect("envelope parses");
-        if matches!(&env, ServerEnvelope::Post { id, .. } if id == "sched-tick") {
-            break env;
-        }
-    };
-    assert!(matches!(received, ServerEnvelope::Post { id, .. } if id == "sched-tick"));
-
-    bob_ws.close(None).await.expect("close");
-    handle.abort();
 }
 
 #[tokio::test]

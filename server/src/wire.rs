@@ -54,14 +54,12 @@ pub enum ServerEnvelope {
         author_id: String,
         content: String,
         timestamp: i64,
-        expires_at: Option<i64>,
         category: Option<String>,
         media_ref_name: Option<String>,
         image_url: Option<String>,
         attachment_url: Option<String>,
         attachment_type: Option<String>,
         attachments: Option<Vec<MediaItem>>,
-        scheduled_at: Option<i64>,
         rally_group_id: Option<String>,
         rally_max_members: Option<i32>,
     },
@@ -99,7 +97,6 @@ impl From<Post> for ServerEnvelope {
             author_id: value.author_id,
             content: value.content,
             timestamp: value.timestamp,
-            expires_at: value.expires_at,
             category: value.category,
             media_ref_name: value.media_ref_name,
             image_url: value.image_url,
@@ -109,7 +106,6 @@ impl From<Post> for ServerEnvelope {
                 .attachments
                 .as_deref()
                 .and_then(|s| serde_json::from_str(s).ok()),
-            scheduled_at: value.scheduled_at,
             rally_group_id: value.rally_group_id,
             rally_max_members: value.rally_max_members,
         }
@@ -138,7 +134,6 @@ pub struct CreatePostRequest {
     pub id: String,
     pub content: String,
     pub timestamp: i64,
-    pub expires_at: Option<i64>,
     pub recipient_ids: Vec<String>,
     pub category: Option<String>,
     pub media_ref_name: Option<String>,
@@ -146,7 +141,6 @@ pub struct CreatePostRequest {
     pub attachment_url: Option<String>,
     pub attachment_type: Option<String>,
     pub attachments: Option<Vec<MediaItem>>,
-    pub scheduled_at: Option<i64>,
     pub rally: Option<CreateRallyRequest>,
 }
 

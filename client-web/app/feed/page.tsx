@@ -7,7 +7,6 @@ import { useAppStore } from '@/lib/store'
 import { getPosts, createPost, ackPost, joinGroup } from '@/lib/relay'
 import * as ws from '@/lib/ws'
 import { db } from '@/lib/db'
-import { resolveTags } from '@/lib/tags'
 import { PostCard } from '@/components/PostCard'
 import { ComposeSheet } from '@/components/ComposeSheet'
 import { ReachModal } from '@/components/ReachModal'
@@ -30,7 +29,6 @@ function toPost(env: ServerEnvelope & { type: 'post' }, isOwn = false): Post {
     author_id: env.author_id,
     content: env.content,
     timestamp: env.timestamp,
-    expires_at: env.expires_at,
     is_own: isOwn,
     category: env.category,
     media_ref_name: env.media_ref_name,
@@ -38,7 +36,6 @@ function toPost(env: ServerEnvelope & { type: 'post' }, isOwn = false): Post {
     attachment_url: env.attachment_url,
     attachment_type: env.attachment_type,
     attachments: env.attachments,
-    scheduled_at: env.scheduled_at,
     rally_group_id: env.rally_group_id,
     rally_max_members: env.rally_max_members,
   }
@@ -101,26 +98,17 @@ export default function FeedPage() {
 
   async function handlePost(
     content: string,
-    expiresAt: number | null,
-    audienceTagIds: string[] | null,
     category?: string | null,
     mediaRefName?: string | null,
     imageUrl?: string | null,
     attachments?: MediaItem[] | null,
-    scheduledAt?: number | null,
     rallyMaxMembers?: number | null,
   ) {
     const t = useAppStore.getState().token
     if (!t) throw new Error('not authenticated')
 
-    let recipientIds: string[]
-    if (audienceTagIds && audienceTagIds.length > 0) {
-      const resolved = await resolveTags(audienceTagIds)
-      recipientIds = [...resolved]
-    } else {
-      const friends = await db.friends.filter((f) => f.blockedAt === null).toArray()
-      recipientIds = friends.map((f) => f.userId)
-    }
+    const friends = await db.friends.filter((f) => f.blockedAt === null).toArray()
+    const recipientIds = friends.map((f) => f.userId)
 
     const id = crypto.randomUUID()
     const groupId = rallyMaxMembers ? crypto.randomUUID() : null
@@ -131,13 +119,11 @@ export default function FeedPage() {
       author_id: userId ?? '',
       content,
       timestamp,
-      expires_at: expiresAt,
       is_own: true,
       category,
       media_ref_name: mediaRefName,
       image_url: imageUrl,
       attachments,
-      scheduled_at: scheduledAt,
       rally_group_id: groupId,
       rally_max_members: rallyMaxMembers,
     })
@@ -146,13 +132,11 @@ export default function FeedPage() {
       id,
       content,
       timestamp,
-      expires_at: expiresAt,
       recipient_ids: recipientIds,
       category,
       media_ref_name: mediaRefName,
       image_url: imageUrl,
       attachments,
-      scheduled_at: scheduledAt,
       rally: groupId && rallyMaxMembers ? { group_id: groupId, max_members: rallyMaxMembers } : null,
     })
 
@@ -198,9 +182,7 @@ export default function FeedPage() {
     )
   }
 
-  const now = Math.floor(Date.now() / 1000)
   const visiblePosts = posts
-    .filter((p) => p.expires_at === null || p.expires_at > now)
     .filter((p) => activeFilter === 'all' || p.category === activeFilter)
 
   return (

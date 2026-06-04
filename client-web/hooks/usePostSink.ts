@@ -11,7 +11,6 @@ function toPost(env: ServerEnvelope & { type: 'post' }) {
     author_id: env.author_id,
     content: env.content,
     timestamp: env.timestamp,
-    expires_at: env.expires_at,
     is_own: false,
     category: env.category,
     media_ref_name: env.media_ref_name,
@@ -19,7 +18,6 @@ function toPost(env: ServerEnvelope & { type: 'post' }) {
     attachment_url: env.attachment_url,
     attachment_type: env.attachment_type,
     attachments: env.attachments,
-    scheduled_at: env.scheduled_at,
     rally_group_id: env.rally_group_id,
     rally_max_members: env.rally_max_members,
   }

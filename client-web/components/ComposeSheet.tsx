@@ -327,8 +327,10 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
       <div className="w-full max-w-md rounded-t-2xl bg-white p-6 shadow-xl sm:rounded-2xl">
         <div className="mb-4 flex items-center justify-between">
-          <span className="text-sm font-semibold text-zinc-500">
-            {postMode === 'rally' ? 'New rally post' : 'New anonymous post'}
+          <span className="text-xs text-zinc-400">
+            {postMode === 'rally'
+              ? 'Form a group to talk about a shared interest.'
+              : 'Post anonymously — readers can reach out and DM you.'}
           </span>
           <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600">
             <X size={18} />
@@ -353,7 +355,7 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
                 postMode === 'anonymous' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500'
               }`}
             >
-              Anonymous
+              Individual
             </button>
             <button
               type="button"

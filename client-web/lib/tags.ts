@@ -16,17 +16,9 @@ export async function renameTag(tagId: string, name: string): Promise<void> {
 }
 
 export async function deleteTag(tagId: string): Promise<void> {
-  await db.transaction('rw', [db.tags, db.friendTags, db.posts], async () => {
+  await db.transaction('rw', [db.tags, db.friendTags], async () => {
     await db.tags.delete(tagId)
     await db.friendTags.where('tagId').equals(tagId).delete()
-    // Clear this tag from any local post audience records.
-    const affected = await db.posts
-      .filter((p) => Array.isArray(p.audienceTagIds) && p.audienceTagIds.includes(tagId))
-      .toArray()
-    for (const post of affected) {
-      const next = (post.audienceTagIds ?? []).filter((id) => id !== tagId)
-      await db.posts.update(post.id, { audienceTagIds: next.length ? next : undefined })
-    }
   })
 }
 

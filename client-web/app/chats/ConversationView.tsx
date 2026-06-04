@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, Send, MoreVertical, X } from 'lucide-react'
+import { ArrowLeft, MoreVertical, X } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { sendMessage, getMessages } from '@/lib/relay'
 import { encodePayload, decodePayload } from '@/lib/crypto'
 import * as ws from '@/lib/ws'
 import { db } from '@/lib/db'
+import { ChatComposer } from '@/components/ChatComposer'
 import { MessageBubble } from '@/components/MessageBubble'
 import { TabBar } from '@/components/TabBar'
 import { TagSelector } from '@/components/TagSelector'
@@ -133,8 +134,7 @@ export default function ConversationPage({ conversationId: conversationIdProp, e
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  async function handleSend(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleSend() {
     const text = input.trim()
     if (!text || !token || !friendId || !userId || !conversationId) return
 
@@ -180,10 +180,13 @@ export default function ConversationPage({ conversationId: conversationIdProp, e
 
   const displayName = friendName ?? (friendId ? friendId.slice(0, 8) + '…' : '…')
   const railOffset = embedded ? '' : 'md:ml-32 landscape:ml-32'
+  const mobileComposerOffset = embedded
+    ? ''
+    : 'sticky bottom-0 z-10 w-full max-w-md md:static md:max-w-none md:translate-x-0 landscape:static landscape:max-w-none landscape:translate-x-0'
 
   return (
     <>
-      <header className={`flex items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur ${railOffset}`}>
+      <header className={`flex sticky top-0 z-10 items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur ${railOffset}`}>
         {!embedded && (
           <button onClick={() => router.push('/chats')} className="text-zinc-500 hover:text-zinc-800">
             <ArrowLeft size={20} />
@@ -280,28 +283,14 @@ export default function ConversationPage({ conversationId: conversationIdProp, e
         <div ref={bottomRef} />
       </main>
 
-      <form
+      <ChatComposer
+        value={input}
+        onChange={setInput}
         onSubmit={handleSend}
-        className={`flex items-end gap-2 border-t border-zinc-200 bg-white p-4 ${railOffset}`}
-      >
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e) }
-          }}
-          placeholder="Type a message…"
-          rows={1}
-          className="flex-1 resize-none rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none"
-        />
-        <button
-          type="submit"
-          disabled={sending || !input.trim()}
-          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition-opacity disabled:opacity-40"
-        >
-          <Send size={16} />
-        </button>
-      </form>
+        sending={sending}
+        placeholder="Type a message…"
+        className={`${mobileComposerOffset} ${railOffset}`}
+      />
 
       {!embedded && <TabBar sideOnly />}
     </>

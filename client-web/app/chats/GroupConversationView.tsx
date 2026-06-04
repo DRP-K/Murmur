@@ -1,13 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
-import { ArrowLeft, Send, X, Users } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { ArrowLeft, Users } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { ackGroupMessage, getGroupMessages, sendGroupMessage } from '@/lib/relay'
 import { decodePayload, encodePayload } from '@/lib/crypto'
 import { db } from '@/lib/db'
+import { ChatComposer } from '@/components/ChatComposer'
 import { MessageBubble } from '@/components/MessageBubble'
 
 interface GroupConversationPageProps {
@@ -30,6 +30,7 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
   const [sending, setSending] = useState(false)
   const [friendNames, setFriendNames] = useState<Record<string, string>>({})
   const bottomRef = useRef<HTMLDivElement>(null)
+  const router = useRouter()
 
   const messages = useMemo(
     () => (groupId ? (groupMessagesByGroup[groupId] ?? []) : []),
@@ -75,8 +76,7 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  async function handleSend(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleSend() {
     const text = input.trim()
     if (!text || !token || !userId || !groupId) return
     setSending(true)
@@ -120,7 +120,7 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
   const railOffset = embedded ? '' : 'md:ml-32 landscape:ml-32'
   const mobileComposerOffset = embedded
     ? ''
-    : 'fixed bottom-0 left-1/2 z-20 w-full max-w-md -translate-x-1/2 md:static md:max-w-none md:translate-x-0 landscape:static landscape:max-w-none landscape:translate-x-0'
+    : 'sticky bottom-0 z-10 w-full max-w-md md:static md:max-w-none md:translate-x-0 landscape:static landscape:max-w-none landscape:translate-x-0'
   const messageBottomPadding = embedded ? '' : 'pb-24 md:pb-4 landscape:pb-4'
   const title = group?.title || 'Group'
   const memberText = group ? `${group.members.length}/${group.maxMembers}` : ''
@@ -132,10 +132,12 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
 
   return (
     <>
-      <header className={`flex items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur ${railOffset}`}>
-        <Link href="/chats" className="text-zinc-500 hover:text-zinc-800">
-          {embedded ? <X size={20} /> : <ArrowLeft size={20} />}
-        </Link>
+      <header className={`flex sticky top-0 z-10 items-center gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur ${railOffset}`}>
+        {!embedded && (
+          <button onClick={() => router.push('/chats')} className="text-zinc-500 hover:text-zinc-800">
+            <ArrowLeft size={20} />
+          </button>
+        )}
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
           <Users size={16} />
         </div>
@@ -159,28 +161,14 @@ export default function GroupConversationPage({ groupId: groupIdProp, embedded =
         <div ref={bottomRef} />
       </main>
 
-      <form
+      <ChatComposer
+        value={input}
+        onChange={setInput}
         onSubmit={handleSend}
-        className={`flex items-end gap-2 border-t border-zinc-200 bg-white p-4 ${mobileComposerOffset} ${railOffset}`}
-      >
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e) }
-          }}
-          placeholder="Message the group..."
-          rows={1}
-          className="flex-1 resize-none rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm text-zinc-800 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none"
-        />
-        <button
-          type="submit"
-          disabled={sending || !input.trim()}
-          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition-opacity disabled:opacity-40"
-        >
-          <Send size={16} />
-        </button>
-      </form>
+        sending={sending}
+        placeholder="Message the group..."
+        className={`${mobileComposerOffset} ${railOffset}`}
+      />
     </>
   )
 }

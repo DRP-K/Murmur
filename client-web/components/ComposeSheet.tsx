@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { X, Send, Image as ImageIcon, Users } from 'lucide-react'
 import { assistPost, uploadMedia } from '@/lib/relay'
 import { useAppStore } from '@/lib/store'
@@ -9,6 +9,7 @@ import type { MediaItem } from '@/lib/types'
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024
+const TOPIC_ASSIST_DEBOUNCE_MS = 1000
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm']
 
 interface Props {
@@ -37,7 +38,7 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
   const [content, setContent] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [showSuggestions, setShowSuggestions] = useState(true)
   const [mediaCategory, setMediaCategory] = useState<string | null>(null)
   const [mediaRefName, setMediaRefName] = useState<string | null>(null)
   const [mediaImageUrl, setMediaImageUrl] = useState<string | null>(null)
@@ -56,9 +57,40 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
   const hashAssistRef = useRef(0)
   const contentRef = useRef('')
 
+  const requestHashAssist = useCallback(async (outline = contentRef.current.trim()) => {
+    if (outline.split(/\s+/).filter(Boolean).length < 2) return
+    const token = useAppStore.getState().token
+    if (!token) return
+    const reqId = ++hashAssistRef.current
+    try {
+      const suggestion = await assistPost(token, outline)
+      if (hashAssistRef.current !== reqId) return
+      if (contentRef.current.trim() !== outline) return
+      if (suggestion.category && suggestion.media_ref_name)
+        setHashCategory({ category: suggestion.category, mediaRefName: suggestion.media_ref_name })
+    } catch { /* silent */ }
+  }, [])
+
   useEffect(() => {
     if (!open) return
+    setShowSuggestions(true)
   }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const outline = content.trim()
+    if (outline.split(/\s+/).filter(Boolean).length < 2) {
+      hashAssistRef.current += 1
+      setHashCategory(null)
+      return
+    }
+
+    const timeout = setTimeout(() => {
+      requestHashAssist(outline)
+    }, TOPIC_ASSIST_DEBOUNCE_MS)
+
+    return () => clearTimeout(timeout)
+  }, [content, open, requestHashAssist])
 
   if (!open) return null
 
@@ -121,6 +153,7 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
       if (suggestion.requestedPrefix !== value.trim()) return null
       return suggestion
     })
+    hashAssistRef.current += 1
     setHashCategory(null)
   }
 
@@ -190,20 +223,6 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
     } finally {
       setApplyingAssistMedia(false)
     }
-  }
-
-  async function requestHashAssist() {
-    const outline = contentRef.current.trim()
-    if (outline.split(/\s+/).filter(Boolean).length < 2) return
-    const token = useAppStore.getState().token
-    if (!token) return
-    const reqId = ++hashAssistRef.current
-    try {
-      const suggestion = await assistPost(token, outline)
-      if (hashAssistRef.current !== reqId) return
-      if (suggestion.category && suggestion.media_ref_name)
-        setHashCategory({ category: suggestion.category, mediaRefName: suggestion.media_ref_name })
-    } catch { /* silent */ }
   }
 
   async function applyHashCategory() {
@@ -340,16 +359,7 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  const opening = !showSuggestions
-                  setShowSuggestions((v) => !v)
-                  if (opening && canRephrase) {
-                    setHashCategory(null)
-                    requestHashAssist()
-                  } else if (!opening) {
-                    setHashCategory(null)
-                  }
-                }}
+                onClick={() => setShowSuggestions((v) => !v)}
                 title="Choose topic"
                 className={`rounded-lg border px-2 py-1 text-[10px] font-semibold transition-colors ${
                   showSuggestions
@@ -385,6 +395,18 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
                 </button>
               )}
             </div>
+          )}
+
+          {hashCategory && (
+            <button
+              type="button"
+              onClick={applyHashCategory}
+              disabled={applyingHashCategory}
+              className="self-start rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-200 disabled:opacity-60"
+            >
+              {CATEGORY_EMOJI[hashCategory.category]} {hashCategory.mediaRefName}
+              {applyingHashCategory ? ' ...' : ''}
+            </button>
           )}
 
           {pendingFiles.length > 0 && (
@@ -428,17 +450,6 @@ export function ComposeSheet({ open, onClose, onSubmit }: Props) {
 
           {showSuggestions && (
             <div className="flex flex-col gap-2">
-              {hashCategory && (
-                <button
-                  type="button"
-                  onClick={applyHashCategory}
-                  disabled={applyingHashCategory}
-                  className="self-start rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-200 disabled:opacity-60"
-                >
-                  {CATEGORY_EMOJI[hashCategory.category]} {hashCategory.mediaRefName}
-                  {applyingHashCategory ? ' ...' : ''}
-                </button>
-              )}
               <PostSuggestions
                 onSelect={(s: SelectedSuggestion) => {
                   setMediaCategory(s.category)

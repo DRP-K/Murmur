@@ -2,7 +2,7 @@
 
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Pencil, Plus, X } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import {
   getPosts,
@@ -76,7 +76,9 @@ export default function FeedPage() {
   )
   const [composeOpen, setComposeOpen] = useState(false)
   const [reachPost, setReachPost] = useState<Post | null>(null)
-  const [activeFilter, setActiveFilter] = useState<string>('favourites')
+  const [activeFilters, setActiveFilters] = useState<Set<string>>(
+    () => new Set<string>(),
+  )
   const [editingFavourites, setEditingFavourites] = useState(false)
   const [newCategoryInput, setNewCategoryInput] = useState('')
   const newCategoryRef = useRef<HTMLInputElement>(null)
@@ -234,18 +236,33 @@ export default function FeedPage() {
     )
   }
 
-  const visiblePosts = posts.filter((p) => {
-    if (activeFilter === 'all') return true
-    if (activeFilter === 'favourites')
-      return (p.categories ?? []).some((c) => favouriteCategories.includes(c))
-    return (p.categories ?? []).includes(activeFilter)
-  })
+  const allFavActive =
+    favouriteCategories.length > 0 && favouriteCategories.every((c) => activeFilters.has(c))
 
-  const filterOptions = [
-    { key: 'all', label: 'All' },
-    { key: 'favourites', label: '★ Favourites' },
-    ...favouriteCategories.map((c) => ({ key: c, label: c })),
-  ]
+  function toggleFilter(key: string) {
+    setActiveFilters((prev) => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
+
+  function toggleAllFavourites() {
+    setActiveFilters((prev) => {
+      const next = new Set(prev)
+      if (allFavActive) {
+        favouriteCategories.forEach((c) => next.delete(c))
+      } else {
+        favouriteCategories.forEach((c) => next.add(c))
+      }
+      return next
+    })
+  }
+
+  const visiblePosts = posts.filter((p) => {
+    if (activeFilters.size === 0) return true
+    return (p.categories ?? []).some((c) => activeFilters.has(c))
+  })
 
   return (
     <>
@@ -260,20 +277,48 @@ export default function FeedPage() {
           </button>
         </div>
         <div className="flex items-center gap-1.5 overflow-x-auto px-4 pb-2.5">
-          {filterOptions.map((f) => {
-            const sorting = rescansInProgress.includes(f.key)
+          {/* All button — clears all filters */}
+          <button
+            onClick={() => setActiveFilters(new Set())}
+            className={`flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              activeFilters.size === 0
+                ? 'bg-zinc-900 text-white'
+                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+            }`}
+          >
+            All
+          </button>
+
+          {/* All Favorite — toggles every custom category at once */}
+          {favouriteCategories.length > 0 && (
+            <button
+              onClick={toggleAllFavourites}
+              className={`flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                allFavActive
+                  ? 'bg-zinc-900 text-white'
+                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+              }`}
+            >
+              ★ All Favorite
+            </button>
+          )}
+
+          {/* Individual category toggles */}
+          {favouriteCategories.map((cat) => {
+            const active = activeFilters.has(cat)
+            const sorting = rescansInProgress.includes(cat)
             return (
               <button
-                key={f.key}
-                onClick={() => setActiveFilter(f.key)}
+                key={cat}
+                onClick={() => toggleFilter(cat)}
                 title={sorting ? 'Murmur is still sorting posts into this category…' : undefined}
                 className={`flex flex-shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                  activeFilter === f.key
+                  active
                     ? 'bg-zinc-900 text-white'
                     : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
                 }`}
               >
-                {f.label}
+                {cat}
                 {sorting && (
                   <span className="inline-block h-2 w-2 animate-spin rounded-full border border-current border-t-transparent" />
                 )}
@@ -285,7 +330,7 @@ export default function FeedPage() {
             className="ml-1 flex-shrink-0 rounded-full bg-zinc-100 p-1.5 text-zinc-500 hover:bg-zinc-200"
             title="Edit favourite categories"
           >
-            <Pencil size={12} />
+            <Plus size={12} />
           </button>
         </div>
 
@@ -339,9 +384,9 @@ export default function FeedPage() {
       </header>
 
       <main className="flex flex-1 flex-col gap-3 p-4 pb-16 md:ml-32 md:pb-4 landscape:ml-32 landscape:pb-4">
-        {rescansInProgress.includes(activeFilter) && (
+        {rescansInProgress.some((c) => activeFilters.has(c)) && (
           <p className="text-center text-xs text-zinc-400">
-            Murmur is sorting posts into <span className="font-medium text-zinc-600">{activeFilter}</span>…
+            Murmur is still sorting some posts into your selected categories…
           </p>
         )}
         {visiblePosts.length === 0 ? (

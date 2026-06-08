@@ -99,11 +99,16 @@ pub async fn register(
     validate_registration(&payload.user_id, &payload.pubkey_hex)?;
 
     let use_ai = state.deepseek_api_key.is_some();
+    let dynamic_posts = state
+        .dynamic_seed_posts
+        .read()
+        .map(|g| g.clone())
+        .unwrap_or_default();
     let mut conn = state.pool.get().map_err(db_error)?;
     repository::register_user(&mut conn, &payload.user_id, &payload.pubkey_hex, now_ts())
         .map_err(db_error)?;
 
-    seed::seed_for_new_user(&mut conn, &payload.user_id, use_ai);
+    seed::seed_for_new_user(&mut conn, &payload.user_id, use_ai, &dynamic_posts);
     drop(conn);
 
     if use_ai {
@@ -1099,31 +1104,36 @@ async fn rescan_posts_for_category(
     user_id: &str,
     category: &str,
 ) {
-    let Ok(mut conn) = pool.get() else { return };
-    let Ok(posts) = repository::list_all_posts_for_user(&mut conn, user_id) else {
-        return;
-    };
-
-    // Build the set of post_ids that already have this category tagged.
-    let post_ids: Vec<&str> = posts.iter().map(|p| p.id.as_str()).collect();
-    let Ok(existing_cats) = repository::list_post_categories_for_posts(&mut conn, &post_ids) else {
-        return;
+    // --- read phase: load posts and existing tags, then release the connection ---
+    let (posts, existing_cats) = {
+        let Ok(mut conn) = pool.get() else { return };
+        let Ok(posts) = repository::list_all_posts_for_user(&mut conn, user_id) else {
+            return;
+        };
+        let post_ids: Vec<&str> = posts.iter().map(|p| p.id.as_str()).collect();
+        let Ok(existing_cats) = repository::list_post_categories_for_posts(&mut conn, &post_ids)
+        else {
+            return;
+        };
+        (posts, existing_cats)
+        // conn returned to pool here
     };
 
     let candidates = vec![category.to_string()];
-    let mut matched_count = 0u32;
 
-    for post in &posts {
-        // Skip if already tagged with this category.
-        if existing_cats
-            .get(&post.id)
-            .map(|cats| cats.contains(&category.to_string()))
-            .unwrap_or(false)
-        {
-            continue;
-        }
+    let posts_to_scan: Vec<&crate::db::models::Post> = posts
+        .iter()
+        .filter(|post| {
+            !existing_cats
+                .get(&post.id)
+                .map(|cats| cats.contains(&category.to_string()))
+                .unwrap_or(false)
+        })
+        .collect();
 
-        let matched = bot_ai::classify_post_category(
+    // --- parallel classify phase: all DeepSeek calls in flight at once ---
+    let classify_futures = posts_to_scan.iter().map(|post| {
+        bot_ai::classify_post_category(
             http,
             api_key,
             &post.content,
@@ -1131,14 +1141,19 @@ async fn rescan_posts_for_category(
             post.media_ref_name.as_deref(),
             &candidates,
         )
-        .await;
+    });
+    let results = futures_util::future::join_all(classify_futures).await;
 
+    // --- write phase: re-acquire connection, store matches, push live updates ---
+    let Ok(mut conn) = pool.get() else { return };
+    let mut matched_count = 0u32;
+
+    for (post, matched) in posts_to_scan.iter().zip(results) {
         if !matched.is_empty() {
             if let Err(e) = repository::set_post_categories(&mut conn, &post.id, &matched) {
                 warn!(post_id = %post.id, error = %e, "rescan: failed to store category");
             } else {
                 matched_count += 1;
-                // Push the update to the client if they are online.
                 state.send_to_online(
                     user_id,
                     ServerEnvelope::PostCategoryUpdate {
@@ -1153,13 +1168,11 @@ async fn rescan_posts_for_category(
     info!(
         user_id = %user_id,
         category = %category,
-        scanned = posts.len(),
+        scanned = posts_to_scan.len(),
         matched = matched_count,
         "post rescan complete"
     );
 
-    // Queue the completion so offline clients receive it on next connect, then
-    // also try live delivery for clients that are currently online.
     if let Err(e) = repository::queue_rescan_completion(&mut conn, user_id, category, now_ts()) {
         warn!(user_id = %user_id, category = %category, error = %e, "failed to queue rescan completion");
     }

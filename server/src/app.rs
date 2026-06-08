@@ -12,6 +12,7 @@ use tracing::{debug, info, warn};
 use crate::api;
 use crate::bot_ai::ChatMessage;
 use crate::db::{DbPool, establish_pool, run_migrations};
+use crate::media_api::MediaPost;
 use crate::seed;
 use crate::wire::ServerEnvelope;
 
@@ -27,10 +28,12 @@ pub struct AppState {
     pub online: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<ServerEnvelope>>>>,
     pub invite_tokens: Arc<RwLock<HashMap<String, InviteToken>>>,
     pub deepseek_api_key: Option<Arc<String>>,
+    pub rawg_api_key: Option<Arc<String>>,
     pub http_client: Arc<reqwest::Client>,
     /// Keyed by (bot_id, user_id). Holds the alternating user/assistant turns for each
     /// conversation so bots can reply with awareness of prior messages.
     pub conversation_history: Arc<RwLock<HashMap<(String, String), Vec<ChatMessage>>>>,
+    pub dynamic_seed_posts: Arc<RwLock<Vec<MediaPost>>>,
 }
 
 impl AppState {
@@ -47,15 +50,34 @@ impl AppState {
     }
 
     fn with_key(pool: DbPool, deepseek_api_key: Option<Arc<String>>) -> Self {
+        let rawg_api_key = std::env::var("RAWG_API_KEY").ok().map(|k| {
+            info!("RAWG_API_KEY found — game seed posts will be fetched from RAWG");
+            Arc::new(k)
+        });
         Self {
             pool,
             sessions: Arc::new(RwLock::new(HashMap::new())),
             online: Arc::new(RwLock::new(HashMap::new())),
             invite_tokens: Arc::new(RwLock::new(HashMap::new())),
             deepseek_api_key,
+            rawg_api_key,
             http_client: Arc::new(reqwest::Client::new()),
             conversation_history: Arc::new(RwLock::new(HashMap::new())),
+            dynamic_seed_posts: Arc::new(RwLock::new(Vec::new())),
         }
+    }
+
+    pub async fn fetch_seed_posts(&self) {
+        let mut posts = Vec::new();
+        if let Some(key) = &self.rawg_api_key {
+            posts.extend(crate::media_api::fetch_rawg_games(&self.http_client, key).await);
+        }
+        posts.extend(crate::media_api::fetch_itunes_music(&self.http_client).await);
+        let count = posts.len();
+        if let Ok(mut lock) = self.dynamic_seed_posts.write() {
+            *lock = posts;
+        }
+        info!(count, "dynamic seed posts fetched");
     }
 
     pub fn from_database_url(

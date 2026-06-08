@@ -6,6 +6,7 @@ use tracing::{info, warn};
 use crate::auth::user_id_for_pubkey;
 use crate::db::models::{NewPendingMessage, NewPost};
 use crate::db::repository;
+use crate::media_api::MediaPost;
 
 struct BotDef {
     seed: u8,
@@ -119,7 +120,12 @@ pub fn seed_bots(conn: &mut SqliteConnection) {
 /// static welcome DMs.  Pass `skip_welcome = true` when the caller will generate AI welcomes
 /// instead, so users don't receive both a static and an AI message.
 /// All errors are logged and swallowed — seeding must never fail a registration request.
-pub fn seed_for_new_user(conn: &mut SqliteConnection, new_user_id: &str, skip_welcome: bool) {
+pub fn seed_for_new_user(
+    conn: &mut SqliteConnection,
+    new_user_id: &str,
+    skip_welcome: bool,
+    dynamic_posts: &[MediaPost],
+) {
     // Skip if user was already seeded (has a friendship with any bot).
     let bot_ids: Vec<(String, String)> = BOTS.iter().map(|b| bot_credentials(b.seed)).collect();
     if let Ok(friends) = repository::list_friends_for_user(conn, new_user_id) {
@@ -128,7 +134,13 @@ pub fn seed_for_new_user(conn: &mut SqliteConnection, new_user_id: &str, skip_we
             .iter()
             .any(|(fid, _, _)| known.contains(&fid.as_str()))
         {
-            ensure_extra_posts(conn, new_user_id, &bot_ids, Utc::now().timestamp());
+            ensure_extra_posts(
+                conn,
+                new_user_id,
+                &bot_ids,
+                Utc::now().timestamp(),
+                dynamic_posts,
+            );
             return;
         }
     }
@@ -209,7 +221,7 @@ pub fn seed_for_new_user(conn: &mut SqliteConnection, new_user_id: &str, skip_we
         }
     }
 
-    ensure_extra_posts(conn, new_user_id, &bot_ids, now);
+    ensure_extra_posts(conn, new_user_id, &bot_ids, now, dynamic_posts);
 
     info!(user_id = %new_user_id, bots = BOTS.len(), "user seeded");
 }
@@ -219,6 +231,7 @@ fn ensure_extra_posts(
     new_user_id: &str,
     bot_ids: &[(String, String)],
     now: i64,
+    dynamic_posts: &[MediaPost],
 ) {
     for (i, extra) in EXTRA_BOT_POSTS.iter().enumerate() {
         let (extra_bot_id, _) = &bot_ids[extra.bot_index];
@@ -239,6 +252,28 @@ fn ensure_extra_posts(
         };
         if let Err(e) = repository::ensure_rich_post_with_delivery(conn, &post, new_user_id) {
             warn!(post_id = %post_id, error = %e, "seed extra post failed");
+        }
+    }
+
+    for (i, dyn_post) in dynamic_posts.iter().enumerate() {
+        let (dyn_bot_id, _) = &bot_ids[dyn_post.bot_index % bot_ids.len()];
+        let post_id = format!("seed:{dyn_bot_id}:{new_user_id}:dyn:{i}");
+        let post = NewPost {
+            id: &post_id,
+            author_id: dyn_bot_id,
+            content: &dyn_post.content,
+            timestamp: now - (3600 * (50 - i as i64)),
+            category: Some(dyn_post.category),
+            media_ref_name: Some(&dyn_post.media_ref_name),
+            image_url: Some(&dyn_post.image_url),
+            attachment_url: None,
+            attachment_type: None,
+            attachments: None,
+            rally_group_id: None,
+            rally_max_members: None,
+        };
+        if let Err(e) = repository::ensure_rich_post_with_delivery(conn, &post, new_user_id) {
+            warn!(post_id = %post_id, error = %e, "seed dynamic post failed");
         }
     }
 }
@@ -301,7 +336,7 @@ mod tests {
         seed_bots(&mut conn);
         let user_id = register_test_user(&mut conn, 50);
 
-        seed_for_new_user(&mut conn, &user_id, false);
+        seed_for_new_user(&mut conn, &user_id, false, &[]);
 
         let friends =
             repository::list_friends_for_user(&mut conn, &user_id).expect("friends should list");
@@ -379,7 +414,7 @@ mod tests {
         seed_bots(&mut conn);
         let user_id = register_test_user(&mut conn, 51);
 
-        seed_for_new_user(&mut conn, &user_id, false);
+        seed_for_new_user(&mut conn, &user_id, false, &[]);
 
         let messages =
             repository::list_pending_messages(&mut conn, &user_id).expect("messages should list");
@@ -396,7 +431,7 @@ mod tests {
         seed_bots(&mut conn);
         let user_id = register_test_user(&mut conn, 53);
 
-        seed_for_new_user(&mut conn, &user_id, false);
+        seed_for_new_user(&mut conn, &user_id, false, &[]);
 
         let messages =
             repository::list_pending_messages(&mut conn, &user_id).expect("messages should list");
@@ -429,8 +464,8 @@ mod tests {
         seed_bots(&mut conn);
         let user_id = register_test_user(&mut conn, 52);
 
-        seed_for_new_user(&mut conn, &user_id, false);
-        seed_for_new_user(&mut conn, &user_id, false); // second call should be a no-op
+        seed_for_new_user(&mut conn, &user_id, false, &[]);
+        seed_for_new_user(&mut conn, &user_id, false, &[]); // second call should be a no-op
 
         let friends =
             repository::list_friends_for_user(&mut conn, &user_id).expect("friends should list");
@@ -465,7 +500,7 @@ mod tests {
         seed_bots(&mut conn);
         let user_id = register_test_user(&mut conn, 55);
 
-        seed_for_new_user(&mut conn, &user_id, false);
+        seed_for_new_user(&mut conn, &user_id, false, &[]);
 
         let (bot_id, _) = bot_credentials(BOTS[0].seed);
         let post_id = format!("seed:{bot_id}:{user_id}:extra:0");
@@ -480,7 +515,7 @@ mod tests {
             .execute(&mut conn)
             .expect("post metadata should be cleared");
 
-        seed_for_new_user(&mut conn, &user_id, false);
+        seed_for_new_user(&mut conn, &user_id, false, &[]);
 
         let repaired = posts::table
             .filter(posts::id.eq(&post_id))
@@ -511,7 +546,7 @@ mod tests {
         seed_bots(&mut conn);
         let user_id = register_test_user(&mut conn, 60);
 
-        seed_for_new_user(&mut conn, &user_id, false);
+        seed_for_new_user(&mut conn, &user_id, false, &[]);
 
         let messages =
             repository::list_pending_messages(&mut conn, &user_id).expect("messages should list");
@@ -529,5 +564,53 @@ mod tests {
                 "unexpected welcome text: {text}"
             );
         }
+    }
+
+    #[test]
+    fn seed_for_new_user_with_dynamic_posts_delivers_them() {
+        use crate::media_api::MediaPost;
+
+        let mut conn = setup_conn();
+        seed_bots(&mut conn);
+        let user_id = register_test_user(&mut conn, 70);
+
+        let dynamic = vec![
+            MediaPost {
+                content: "Currently obsessed with Test Game 🎮".to_string(),
+                category: "games",
+                media_ref_name: "Test Game".to_string(),
+                image_url: "https://example.com/game.jpg".to_string(),
+                bot_index: 0,
+            },
+            MediaPost {
+                content: "Can't stop listening to \"Test Song\" 🎵".to_string(),
+                category: "music",
+                media_ref_name: "Test Song".to_string(),
+                image_url: "https://example.com/song.jpg".to_string(),
+                bot_index: 1,
+            },
+        ];
+
+        seed_for_new_user(&mut conn, &user_id, false, &dynamic);
+
+        let posts =
+            repository::list_pending_posts(&mut conn, &user_id, chrono::Utc::now().timestamp())
+                .expect("posts should list");
+
+        let total_seed_posts: usize = BOTS.iter().map(|b| b.posts.len()).sum();
+        assert_eq!(
+            posts.len(),
+            total_seed_posts + EXTRA_BOT_POSTS.len() + dynamic.len(),
+            "static + extra + dynamic posts all delivered"
+        );
+
+        let dyn_posts: Vec<_> = posts
+            .iter()
+            .filter(|p| {
+                p.media_ref_name.as_deref() == Some("Test Game")
+                    || p.media_ref_name.as_deref() == Some("Test Song")
+            })
+            .collect();
+        assert_eq!(dyn_posts.len(), 2, "both dynamic posts present");
     }
 }

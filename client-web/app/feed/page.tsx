@@ -2,7 +2,7 @@
 
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Pencil, Plus, X } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import {
   getPosts,
@@ -330,7 +330,7 @@ export default function FeedPage() {
             className="ml-1 flex-shrink-0 rounded-full bg-zinc-100 p-1.5 text-zinc-500 hover:bg-zinc-200"
             title="Edit favourite categories"
           >
-            <Pencil size={12} />
+            <Plus size={12} />
           </button>
         </div>
 

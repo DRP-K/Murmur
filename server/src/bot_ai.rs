@@ -227,9 +227,68 @@ async fn call_deepseek_with_options(
         .map(str::to_owned)
 }
 
+/// Given post content and a list of candidate category names (from recipients' favourites),
+/// returns the subset of candidates that the post matches. Returns an empty Vec if nothing fits.
+/// Skips the AI call entirely when `candidate_categories` is empty.
+pub async fn classify_post_category(
+    client: &Client,
+    api_key: &str,
+    content: &str,
+    candidate_categories: &[String],
+) -> Vec<String> {
+    if candidate_categories.is_empty() {
+        return Vec::new();
+    }
+    let candidates_json = serde_json::to_string(candidate_categories).unwrap_or_default();
+    let system_prompt = format!(
+        "You are a post classifier for a social app. \
+         Given a post and a list of candidate category names, return a JSON array of ALL category \
+         names from the list that this post matches. \
+         A post about CSGO gameplay should match both \"CSGO\" and \"games\" if both appear. \
+         Only return names that appear in the candidate list — never invent new ones. \
+         Return an empty array [] if nothing matches. \
+         Return strict JSON only: a JSON array of strings. \
+         Candidate categories: {candidates_json}"
+    );
+    let history = [ChatMessage {
+        role: "user",
+        content: format!("Post: {content}"),
+    }];
+    let text =
+        call_deepseek_with_options(client, api_key, &system_prompt, &history, 150, 0.0).await;
+    let Some(text) = text else {
+        return Vec::new();
+    };
+    parse_classify_response(&text, candidate_categories)
+}
+
+/// Pure parsing logic extracted so it can be unit-tested without a network call.
+pub fn parse_classify_response(text: &str, candidates: &[String]) -> Vec<String> {
+    let parsed: Option<Vec<String>> = serde_json::from_str(text)
+        .or_else(|_| {
+            let start = text.find('[').ok_or(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "no array",
+            )))?;
+            let end = text.rfind(']').ok_or(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "no array",
+            )))?;
+            serde_json::from_str(&text[start..=end])
+        })
+        .ok();
+    let candidate_set: std::collections::HashSet<&str> =
+        candidates.iter().map(String::as_str).collect();
+    parsed
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|c| candidate_set.contains(c.as_str()))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::sanitize_post_assist_json;
+    use super::{parse_classify_response, sanitize_post_assist_json};
 
     #[test]
     fn sanitize_post_assist_accepts_allowed_media() {
@@ -287,5 +346,66 @@ mod tests {
 
         let response = sanitize_post_assist_json("我想", &payload).expect("response should parse");
         assert_eq!(response.completed_content.chars().count(), 500);
+    }
+
+    // ── classify_post_category response parser ────────────────────────────────
+
+    fn cats(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn classify_parses_clean_json_array() {
+        let result = parse_classify_response(r#"["CSGO","games"]"#, &cats(&["CSGO", "games", "music"]));
+        let mut result = result;
+        result.sort();
+        assert_eq!(result, vec!["CSGO", "games"]);
+    }
+
+    #[test]
+    fn classify_extracts_array_from_prose_response() {
+        // Model wraps the JSON in extra text.
+        let text = r#"Sure! Here are the matches: ["CSGO"] based on the post content."#;
+        let result = parse_classify_response(text, &cats(&["CSGO", "games"]));
+        assert_eq!(result, vec!["CSGO"]);
+    }
+
+    #[test]
+    fn classify_filters_out_invented_categories() {
+        // Model returns a category that is not in the candidate list.
+        let result = parse_classify_response(r#"["CSGO","fps","shooters"]"#, &cats(&["CSGO", "games"]));
+        assert_eq!(result, vec!["CSGO"]);
+    }
+
+    #[test]
+    fn classify_returns_empty_for_empty_array_response() {
+        let result = parse_classify_response("[]", &cats(&["CSGO", "games"]));
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn classify_returns_empty_for_unparseable_response() {
+        let result = parse_classify_response("I could not determine the category.", &cats(&["CSGO"]));
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn classify_skips_call_when_candidates_empty() {
+        // This tests the guard at the top of classify_post_category; we test
+        // parse_classify_response directly with an empty candidate list instead.
+        let result = parse_classify_response(r#"["CSGO"]"#, &cats(&[]));
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn classify_returns_multiple_matches_for_overlapping_post() {
+        // A CSGO post should match both "CSGO" and "games".
+        let result = parse_classify_response(
+            r#"["CSGO","games"]"#,
+            &cats(&["CSGO", "games", "music"]),
+        );
+        let mut result = result;
+        result.sort();
+        assert_eq!(result, vec!["CSGO", "games"]);
     }
 }

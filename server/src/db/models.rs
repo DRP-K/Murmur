@@ -1,6 +1,7 @@
 use super::schema::{
     friendships, group_members, group_message_deliveries, group_messages, groups, pending_messages,
-    post_deliveries, posts, users,
+    pending_rescan_completions, post_categories, post_deliveries, posts, user_favourite_categories,
+    users,
 };
 use diesel::{Identifiable, Insertable, Queryable, Selectable};
 
@@ -192,4 +193,44 @@ pub struct NewFriendship<'a> {
     pub user_a: &'a str,
     pub user_b: &'a str,
     pub created_at: i64,
+}
+
+#[derive(Debug, Insertable)]
+#[diesel(table_name = pending_rescan_completions)]
+pub struct NewPendingRescanCompletion<'a> {
+    pub user_id: &'a str,
+    pub category: &'a str,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Queryable, Selectable, Identifiable, PartialEq, Eq)]
+#[diesel(table_name = user_favourite_categories)]
+#[diesel(primary_key(user_id, category))]
+pub struct UserFavouriteCategory {
+    pub user_id: String,
+    pub category: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Insertable)]
+#[diesel(table_name = user_favourite_categories)]
+pub struct NewUserFavouriteCategory<'a> {
+    pub user_id: &'a str,
+    pub category: &'a str,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Queryable, Selectable, Identifiable, PartialEq, Eq)]
+#[diesel(table_name = post_categories)]
+#[diesel(primary_key(post_id, category))]
+pub struct PostCategory {
+    pub post_id: String,
+    pub category: String,
+}
+
+#[derive(Debug, Insertable)]
+#[diesel(table_name = post_categories)]
+pub struct NewPostCategory<'a> {
+    pub post_id: &'a str,
+    pub category: &'a str,
 }

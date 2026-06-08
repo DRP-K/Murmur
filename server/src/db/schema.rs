@@ -89,6 +89,29 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    pending_rescan_completions (user_id, category) {
+        user_id -> Text,
+        category -> Text,
+        created_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    user_favourite_categories (user_id, category) {
+        user_id -> Text,
+        category -> Text,
+        created_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    post_categories (post_id, category) {
+        post_id -> Text,
+        category -> Text,
+    }
+}
+
 diesel::joinable!(post_deliveries -> posts (post_id));
 diesel::joinable!(post_deliveries -> users (recipient_id));
 diesel::joinable!(posts -> users (author_id));
@@ -97,6 +120,9 @@ diesel::joinable!(group_message_deliveries -> users (recipient_id));
 diesel::joinable!(group_members -> groups (group_id));
 diesel::joinable!(group_members -> users (user_id));
 diesel::joinable!(group_messages -> groups (group_id));
+diesel::joinable!(user_favourite_categories -> users (user_id));
+diesel::joinable!(pending_rescan_completions -> users (user_id));
+diesel::joinable!(post_categories -> posts (post_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     friendships,
@@ -105,7 +131,10 @@ diesel::allow_tables_to_appear_in_same_query!(
     group_messages,
     groups,
     pending_messages,
+    pending_rescan_completions,
+    post_categories,
     post_deliveries,
     posts,
+    user_favourite_categories,
     users,
 );

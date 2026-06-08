@@ -62,6 +62,9 @@ pub enum ServerEnvelope {
         attachments: Option<Vec<MediaItem>>,
         rally_group_id: Option<String>,
         rally_max_members: Option<i32>,
+        /// AI-classified categories matching recipients' favourites.
+        #[serde(default)]
+        categories: Vec<String>,
     },
     #[serde(rename = "group_message")]
     GroupMessage {
@@ -71,6 +74,10 @@ pub enum ServerEnvelope {
         payload_hex: String,
         sent_at: i64,
     },
+    #[serde(rename = "post_category_update")]
+    PostCategoryUpdate { post_id: String, categories: Vec<String> },
+    #[serde(rename = "rescan_complete")]
+    RescanComplete { category: String },
     #[serde(rename = "group_update")]
     GroupUpdate { group: GroupInfo },
     #[serde(rename = "delivered_ack")]
@@ -92,6 +99,12 @@ impl From<PendingMessage> for ServerEnvelope {
 
 impl From<Post> for ServerEnvelope {
     fn from(value: Post) -> Self {
+        Self::post_from_db(value, Vec::new())
+    }
+}
+
+impl ServerEnvelope {
+    pub fn post_from_db(value: Post, categories: Vec<String>) -> Self {
         Self::Post {
             id: value.id,
             author_id: value.author_id,
@@ -108,6 +121,7 @@ impl From<Post> for ServerEnvelope {
                 .and_then(|s| serde_json::from_str(s).ok()),
             rally_group_id: value.rally_group_id,
             rally_max_members: value.rally_max_members,
+            categories,
         }
     }
 }
@@ -261,4 +275,14 @@ pub struct InviteTokenResponse {
 #[derive(Debug, Deserialize)]
 pub struct RedeemInviteTokenRequest {
     pub code: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FavouriteCategoriesResponse {
+    pub categories: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AddFavouriteCategoryRequest {
+    pub category: String,
 }

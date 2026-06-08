@@ -31,6 +31,7 @@ export type ServerEnvelope =
       attachments?: MediaItem[] | null
       rally_group_id?: string | null
       rally_max_members?: number | null
+      categories?: string[]
     }
   | {
       type: 'group_message'
@@ -44,6 +45,8 @@ export type ServerEnvelope =
       type: 'group_update'
       group: GroupInfo
     }
+  | { type: 'post_category_update'; post_id: string; categories: string[] }
+  | { type: 'rescan_complete'; category: string }
   | { type: 'delivered_ack'; id: string }
 
 export interface RegisterRequest {
@@ -129,6 +132,7 @@ export interface Post {
   attachments?: MediaItem[] | null
   rally_group_id?: string | null
   rally_max_members?: number | null
+  categories: string[]
 }
 
 export interface Message {

@@ -435,7 +435,10 @@ mod tests {
         // only the exact title/genre; this verifies our parse layer rejects
         // anything not in the candidate list.
         let result = parse_classify_response(r#"["GTA5"]"#, &cats(&["Portal 2"]));
-        assert!(result.is_empty(), "GTA5 should not appear when only Portal 2 is a candidate");
+        assert!(
+            result.is_empty(),
+            "GTA5 should not appear when only Portal 2 is a candidate"
+        );
 
         // Conversely, if the AI correctly returns ["Portal 2"], only that matches.
         let result = parse_classify_response(r#"["Portal 2"]"#, &cats(&["GTA5", "Portal 2"]));

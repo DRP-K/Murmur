@@ -15,6 +15,7 @@ services:
       PORT: ${PRODUCTION_CONTAINER_PORT:-3000}
       BIND_ADDR: 0.0.0.0:${PRODUCTION_CONTAINER_PORT:-3000}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      RAWG_API_KEY: ${NEXT_PUBLIC_RAWG_API_KEY}
     volumes:
       - murmur-production-data:/var/app/data
     networks:

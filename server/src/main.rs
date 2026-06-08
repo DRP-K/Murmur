@@ -25,6 +25,8 @@ async fn main() {
         }
     };
 
+    state.fetch_seed_posts().await;
+
     let listener = match tokio::net::TcpListener::bind(&bind_addr).await {
         Ok(listener) => listener,
         Err(err) => {

@@ -452,6 +452,7 @@ pub async fn post_post(
         let post_id = payload.id.clone();
         let content = payload.content.clone();
         let post_category = payload.category.clone();
+        let media_ref_name = payload.media_ref_name.clone();
         let recipient_ids: Vec<String> = payload.recipient_ids.clone();
         tokio::spawn(async move {
             let Ok(mut conn) = pool.get() else { return };
@@ -474,6 +475,7 @@ pub async fn post_post(
                 &api_key,
                 &content,
                 post_category.as_deref(),
+                media_ref_name.as_deref(),
                 &candidates,
             )
             .await;
@@ -1126,6 +1128,7 @@ async fn rescan_posts_for_category(
             api_key,
             &post.content,
             post.category.as_deref(),
+            post.media_ref_name.as_deref(),
             &candidates,
         )
         .await;

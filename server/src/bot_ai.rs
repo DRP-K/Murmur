@@ -196,11 +196,13 @@ async fn call_deepseek_with_options(
         messages.push(json!({"role": m.role, "content": m.content}));
     }
     let body = json!({
-        "model": "deepseek-chat",
+        "model": "deepseek-v4-flash",
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature
     });
+
+    tracing::info!(prompt = %serde_json::to_string(&messages).unwrap_or_default(), "deepseek request");
 
     let resp = client
         .post("https://api.deepseek.com/v1/chat/completions")
@@ -222,9 +224,11 @@ async fn call_deepseek_with_options(
         .map_err(|e| warn!(error = %e, "deepseek response parse failed"))
         .ok()?;
 
-    json["choices"][0]["message"]["content"]
+    let reply = json["choices"][0]["message"]["content"]
         .as_str()
-        .map(str::to_owned)
+        .map(str::to_owned);
+    tracing::info!(response = ?reply, "deepseek response");
+    reply
 }
 
 /// Given post content, an optional post-assist category tag, and a list of candidate category
@@ -237,6 +241,7 @@ pub async fn classify_post_category(
     api_key: &str,
     content: &str,
     post_category: Option<&str>,
+    media_ref_name: Option<&str>,
     candidate_categories: &[String],
 ) -> Vec<String> {
     if candidate_categories.is_empty() {
@@ -245,19 +250,29 @@ pub async fn classify_post_category(
     let candidates_json = serde_json::to_string(candidate_categories).unwrap_or_default();
     let system_prompt = format!(
         "You are a post classifier for a social app. \
-         Given a post (and an optional media category tag) and a list of candidate category names, \
-         return a JSON array of ALL category names from the list that this post matches. \
-         Use the media category tag as a strong hint — if a post is tagged as \"games\" and the \
-         candidate list contains \"games\" or a specific game title that the post content implies, \
-         include those matches even when the content is brief or indirect. \
+         Given a post (with optional media category tag and specific media title) and a list of \
+         candidate category names, return a JSON array of ALL category names from the list that \
+         this post matches. \
+         When a specific media title is provided (e.g. \"Portal 2\"), only match candidates that \
+         refer to that exact title or its broad genre category — never match a different specific \
+         title (e.g. do NOT match \"GTA 5\" for a post whose title is \"Portal 2\"). \
+         When no specific title is given, use the category tag as a hint but still require the \
+         candidate to be a plausible match for the post content. \
          Only return names that appear in the candidate list — never invent new ones. \
          Return an empty array [] if nothing matches. \
          Return strict JSON only: a JSON array of strings. \
          Candidate categories: {candidates_json}"
     );
-    let user_content = match post_category {
-        Some(cat) => format!("Media category tag: {cat}\nPost: {content}"),
-        None => format!("Post: {content}"),
+    let user_content = {
+        let mut parts = Vec::new();
+        if let Some(cat) = post_category {
+            parts.push(format!("Media category tag: {cat}"));
+        }
+        if let Some(title) = media_ref_name {
+            parts.push(format!("Specific media title: {title}"));
+        }
+        parts.push(format!("Post: {content}"));
+        parts.join("\n")
     };
     let history = [ChatMessage {
         role: "user",
@@ -411,6 +426,20 @@ mod tests {
         // parse_classify_response directly with an empty candidate list instead.
         let result = parse_classify_response(r#"["CSGO"]"#, &cats(&[]));
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn classify_does_not_match_different_game_title() {
+        // A post about Portal 2 (with media_ref_name "Portal 2") must NOT match
+        // "GTA5" even though both are games. The AI is expected to return [] or
+        // only the exact title/genre; this verifies our parse layer rejects
+        // anything not in the candidate list.
+        let result = parse_classify_response(r#"["GTA5"]"#, &cats(&["Portal 2"]));
+        assert!(result.is_empty(), "GTA5 should not appear when only Portal 2 is a candidate");
+
+        // Conversely, if the AI correctly returns ["Portal 2"], only that matches.
+        let result = parse_classify_response(r#"["Portal 2"]"#, &cats(&["GTA5", "Portal 2"]));
+        assert_eq!(result, vec!["Portal 2"]);
     }
 
     #[test]

@@ -58,6 +58,9 @@ function friendIdFromConvId(convId: string, myUserId: string | null): string {
 }
 
 function mergePost(existing: Post, incoming: Post): Post {
+  const mergedCategories = Array.from(
+    new Set([...(existing.categories ?? []), ...(incoming.categories ?? [])]),
+  )
   return {
     ...existing,
     ...incoming,
@@ -69,10 +72,14 @@ function mergePost(existing: Post, incoming: Post): Post {
     attachment_type: incoming.attachment_type ?? existing.attachment_type,
     rally_group_id: incoming.rally_group_id ?? existing.rally_group_id,
     rally_max_members: incoming.rally_max_members ?? existing.rally_max_members,
+    categories: mergedCategories,
   }
 }
 
 function postsMatch(a: Post, b: Post): boolean {
+  const categoriesMatch =
+    (a.categories ?? []).length === (b.categories ?? []).length &&
+    (a.categories ?? []).every((c) => (b.categories ?? []).includes(c))
   return (
     a.id === b.id &&
     a.author_id === b.author_id &&
@@ -85,7 +92,8 @@ function postsMatch(a: Post, b: Post): boolean {
     a.attachment_url === b.attachment_url &&
     a.attachment_type === b.attachment_type &&
     a.rally_group_id === b.rally_group_id &&
-    a.rally_max_members === b.rally_max_members
+    a.rally_max_members === b.rally_max_members &&
+    categoriesMatch
   )
 }
 
@@ -122,6 +130,8 @@ interface AppState {
   groups: Record<string, LocalGroup>
   groupMessagesByGroup: Record<string, LocalGroupMessage[]>
   pendingFriendSetups: FriendSetupEntry[]
+  favouriteCategories: string[]
+  rescansInProgress: string[]
 }
 
 interface AppActions {
@@ -133,6 +143,12 @@ interface AppActions {
   loadFromDexie: () => Promise<void>
   addPosts: (posts: Post[]) => void
   addPost: (post: Post) => void
+  updatePostCategories: (postId: string, newCategories: string[]) => void
+  setFavouriteCategories: (categories: string[]) => void
+  addFavouriteCategory: (category: string) => void
+  removeFavouriteCategory: (category: string) => void
+  markRescanInProgress: (category: string) => void
+  markRescanComplete: (category: string) => void
   addMessage: (convId: string, msg: LocalMessage) => void
   addMessages: (convId: string, msgs: LocalMessage[]) => void
   updateMessageStatus: (msgId: string, status: 'sent' | 'delivered') => void
@@ -167,6 +183,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
   groups: {},
   groupMessagesByGroup: {},
   pendingFriendSetups: [],
+  favouriteCategories: [],
+  rescansInProgress: [],
 
   setSession: (userId, pubkeyHex, token) => set({ userId, pubkeyHex, token }),
   setToken: (token) => set({ token }),
@@ -234,7 +252,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       }
     }
 
-    set({ messagesByConv, conversations, posts: storedPosts, groups, groupMessagesByGroup })
+    const posts = storedPosts.map((p) => ({ categories: [], ...p }))
+    set({ messagesByConv, conversations, posts, groups, groupMessagesByGroup })
   },
 
   addPosts: (incoming) => {
@@ -508,6 +527,47 @@ export const useAppStore = create<AppStore>((set, get) => ({
       }
     })
   },
+
+  updatePostCategories: (postId, newCategories) => {
+    set((state) => {
+      const idx = state.posts.findIndex((p) => p.id === postId)
+      if (idx === -1) return state
+      const existing = state.posts[idx]
+      const merged = Array.from(new Set([...(existing.categories ?? []), ...newCategories]))
+      if (merged.length === (existing.categories ?? []).length) return state
+      const updated = { ...existing, categories: merged }
+      const posts = [...state.posts]
+      posts[idx] = updated
+      db.posts.put(updated).catch(console.error)
+      return { posts }
+    })
+  },
+
+  markRescanInProgress: (category) =>
+    set((state) => ({
+      rescansInProgress: state.rescansInProgress.includes(category)
+        ? state.rescansInProgress
+        : [...state.rescansInProgress, category],
+    })),
+
+  markRescanComplete: (category) =>
+    set((state) => ({
+      rescansInProgress: state.rescansInProgress.filter((c) => c !== category),
+    })),
+
+  setFavouriteCategories: (categories) => set({ favouriteCategories: categories }),
+
+  addFavouriteCategory: (category) =>
+    set((state) => ({
+      favouriteCategories: state.favouriteCategories.includes(category)
+        ? state.favouriteCategories
+        : [...state.favouriteCategories, category],
+    })),
+
+  removeFavouriteCategory: (category) =>
+    set((state) => ({
+      favouriteCategories: state.favouriteCategories.filter((c) => c !== category),
+    })),
 
   pushFriendSetup: (entry) =>
     set((state) => ({ pendingFriendSetups: [...state.pendingFriendSetups, entry] })),

@@ -20,6 +20,7 @@ function toPost(env: ServerEnvelope & { type: 'post' }) {
     attachments: env.attachments,
     rally_group_id: env.rally_group_id,
     rally_max_members: env.rally_max_members,
+    categories: env.categories ?? [],
   }
 }
 

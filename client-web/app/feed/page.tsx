@@ -1,10 +1,18 @@
 'use client'
 
-import { useEffect, useReducer, useState } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus } from 'lucide-react'
+import { Pencil, Plus, X } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
-import { getPosts, createPost, ackPost, joinGroup } from '@/lib/relay'
+import {
+  getPosts,
+  createPost,
+  ackPost,
+  joinGroup,
+  getFavouriteCategories,
+  addFavouriteCategory,
+  removeFavouriteCategory,
+} from '@/lib/relay'
 import * as ws from '@/lib/ws'
 import { db } from '@/lib/db'
 import { PostCard } from '@/components/PostCard'
@@ -38,6 +46,7 @@ function toPost(env: ServerEnvelope & { type: 'post' }, isOwn = false): Post {
     attachments: env.attachments,
     rally_group_id: env.rally_group_id,
     rally_max_members: env.rally_max_members,
+    categories: env.categories ?? [],
   }
 }
 
@@ -50,6 +59,14 @@ export default function FeedPage() {
   const addPost = useAppStore((s) => s.addPost)
   const upsertGroup = useAppStore((s) => s.upsertGroup)
   const userId = useAppStore((s) => s.userId)
+  const favouriteCategories = useAppStore((s) => s.favouriteCategories)
+  const setFavouriteCategories = useAppStore((s) => s.setFavouriteCategories)
+  const addFavouriteCategoryStore = useAppStore((s) => s.addFavouriteCategory)
+  const removeFavouriteCategoryStore = useAppStore((s) => s.removeFavouriteCategory)
+  const updatePostCategories = useAppStore((s) => s.updatePostCategories)
+  const rescansInProgress = useAppStore((s) => s.rescansInProgress)
+  const markRescanInProgress = useAppStore((s) => s.markRescanInProgress)
+  const markRescanComplete = useAppStore((s) => s.markRescanComplete)
   const router = useRouter()
 
   const [reactions, setReactions] = useReducer(
@@ -59,7 +76,36 @@ export default function FeedPage() {
   )
   const [composeOpen, setComposeOpen] = useState(false)
   const [reachPost, setReachPost] = useState<Post | null>(null)
-  const [activeFilter, setActiveFilter] = useState<string>('all')
+  const [activeFilter, setActiveFilter] = useState<string>('favourites')
+  const [editingFavourites, setEditingFavourites] = useState(false)
+  const [newCategoryInput, setNewCategoryInput] = useState('')
+  const newCategoryRef = useRef<HTMLInputElement>(null)
+
+  // Load favourite categories on mount.
+  useEffect(() => {
+    if (!bootstrapped || !token) return
+    getFavouriteCategories(token)
+      .then(setFavouriteCategories)
+      .catch(console.error)
+  }, [bootstrapped, token, setFavouriteCategories])
+
+  async function handleAddFavourite() {
+    const cat = newCategoryInput.trim()
+    if (!cat || !token) return
+    setNewCategoryInput('')
+    addFavouriteCategoryStore(cat)
+    markRescanInProgress(cat)
+    await addFavouriteCategory(token, cat).catch(() => {
+      removeFavouriteCategoryStore(cat)
+      markRescanComplete(cat)
+    })
+  }
+
+  async function handleRemoveFavourite(cat: string) {
+    if (!token) return
+    removeFavouriteCategoryStore(cat)
+    await removeFavouriteCategory(token, cat).catch(() => addFavouriteCategoryStore(cat))
+  }
 
   // Fetch pending posts on mount and add to global store.
   useEffect(() => {
@@ -87,14 +133,19 @@ export default function FeedPage() {
   }, [bootstrapped, token, addPosts])
 
   // Ack posts that arrive via WS while the feed is open.
-  // usePostSink (in BootstrapShell) already adds them to the store.
+  // Also apply server-pushed category updates and rescan completions.
   useEffect(() => {
     return ws.subscribe((env) => {
-      if (env.type !== 'post') return
-      const t = useAppStore.getState().token
-      if (t) ackPost(t, env.id).catch(() => {})
+      if (env.type === 'post') {
+        const t = useAppStore.getState().token
+        if (t) ackPost(t, env.id).catch(() => {})
+      } else if (env.type === 'post_category_update') {
+        updatePostCategories(env.post_id, env.categories)
+      } else if (env.type === 'rescan_complete') {
+        markRescanComplete(env.category)
+      }
     })
-  }, [])
+  }, [updatePostCategories, markRescanComplete])
 
   async function handlePost(
     content: string,
@@ -126,6 +177,7 @@ export default function FeedPage() {
       attachments,
       rally_group_id: groupId,
       rally_max_members: rallyMaxMembers,
+      categories: [],
     })
 
     await createPost(t, {
@@ -182,8 +234,18 @@ export default function FeedPage() {
     )
   }
 
-  const visiblePosts = posts
-    .filter((p) => activeFilter === 'all' || p.category === activeFilter)
+  const visiblePosts = posts.filter((p) => {
+    if (activeFilter === 'all') return true
+    if (activeFilter === 'favourites')
+      return (p.categories ?? []).some((c) => favouriteCategories.includes(c))
+    return (p.categories ?? []).includes(activeFilter)
+  })
+
+  const filterOptions = [
+    { key: 'all', label: 'All' },
+    { key: 'favourites', label: '★ Favourites' },
+    ...favouriteCategories.map((c) => ({ key: c, label: c })),
+  ]
 
   return (
     <>
@@ -197,29 +259,91 @@ export default function FeedPage() {
             <Plus size={16} />
           </button>
         </div>
-        <div className="flex gap-1.5 overflow-x-auto px-4 pb-2.5">
-          {[
-            { key: 'all', label: 'All' },
-            { key: 'movies', label: '🎬 Movie' },
-            { key: 'music', label: '🎵 Music' },
-            { key: 'games', label: '🎮 Game' },
-          ].map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setActiveFilter(f.key)}
-              className={`flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                activeFilter === f.key
-                  ? 'bg-zinc-900 text-white'
-                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-1.5 overflow-x-auto px-4 pb-2.5">
+          {filterOptions.map((f) => {
+            const sorting = rescansInProgress.includes(f.key)
+            return (
+              <button
+                key={f.key}
+                onClick={() => setActiveFilter(f.key)}
+                title={sorting ? 'Murmur is still sorting posts into this category…' : undefined}
+                className={`flex flex-shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                  activeFilter === f.key
+                    ? 'bg-zinc-900 text-white'
+                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                }`}
+              >
+                {f.label}
+                {sorting && (
+                  <span className="inline-block h-2 w-2 animate-spin rounded-full border border-current border-t-transparent" />
+                )}
+              </button>
+            )
+          })}
+          <button
+            onClick={() => setEditingFavourites((v) => !v)}
+            className="ml-1 flex-shrink-0 rounded-full bg-zinc-100 p-1.5 text-zinc-500 hover:bg-zinc-200"
+            title="Edit favourite categories"
+          >
+            <Pencil size={12} />
+          </button>
         </div>
+
+        {editingFavourites && (
+          <div className="border-t border-zinc-100 px-4 pb-3 pt-2">
+            <p className="mb-2 text-xs font-medium text-zinc-500">Favourite categories</p>
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {favouriteCategories.length === 0 && (
+                <span className="text-xs text-zinc-400">No favourites yet.</span>
+              )}
+              {favouriteCategories.map((cat) => (
+                <span
+                  key={cat}
+                  className="flex items-center gap-1 rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-700"
+                >
+                  {cat}
+                  <button
+                    onClick={() => handleRemoveFavourite(cat)}
+                    className="text-zinc-400 hover:text-zinc-700"
+                  >
+                    <X size={10} />
+                  </button>
+                </span>
+              ))}
+            </div>
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault()
+                handleAddFavourite()
+              }}
+            >
+              <input
+                ref={newCategoryRef}
+                type="text"
+                value={newCategoryInput}
+                onChange={(e) => setNewCategoryInput(e.target.value)}
+                placeholder="Add category…"
+                maxLength={50}
+                className="min-w-0 flex-1 rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs outline-none focus:border-zinc-400"
+              />
+              <button
+                type="submit"
+                className="flex-shrink-0 rounded-full bg-zinc-900 px-3 py-1 text-xs font-medium text-white"
+              >
+                Add
+              </button>
+            </form>
+          </div>
+        )}
       </header>
 
       <main className="flex flex-1 flex-col gap-3 p-4 pb-16 md:ml-32 md:pb-4 landscape:ml-32 landscape:pb-4">
+        {rescansInProgress.includes(activeFilter) && (
+          <p className="text-center text-xs text-zinc-400">
+            Murmur is sorting posts into <span className="font-medium text-zinc-600">{activeFilter}</span>…
+          </p>
+        )}
         {visiblePosts.length === 0 ? (
           <p className="pt-16 text-center text-sm text-zinc-400">
             No posts yet. Be the first to share something.

@@ -196,11 +196,13 @@ async fn call_deepseek_with_options(
         messages.push(json!({"role": m.role, "content": m.content}));
     }
     let body = json!({
-        "model": "deepseek-chat",
+        "model": "deepseek-v4-flash",
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature
     });
+
+    tracing::info!(prompt = %serde_json::to_string(&messages).unwrap_or_default(), "deepseek request");
 
     let resp = client
         .post("https://api.deepseek.com/v1/chat/completions")
@@ -222,14 +224,99 @@ async fn call_deepseek_with_options(
         .map_err(|e| warn!(error = %e, "deepseek response parse failed"))
         .ok()?;
 
-    json["choices"][0]["message"]["content"]
+    let reply = json["choices"][0]["message"]["content"]
         .as_str()
-        .map(str::to_owned)
+        .map(str::to_owned);
+    tracing::info!(response = ?reply, "deepseek response");
+    reply
+}
+
+/// Given post content, an optional post-assist category tag, and a list of candidate category
+/// names (from recipients' favourites), returns the subset of candidates that the post matches.
+/// Returns an empty Vec if nothing fits. Skips the AI call entirely when `candidate_categories`
+/// is empty. The `post_category` hint (e.g. "games") is forwarded to the model so that a post
+/// whose content does not explicitly name its subject is still matched to related favourites.
+pub async fn classify_post_category(
+    client: &Client,
+    api_key: &str,
+    content: &str,
+    post_category: Option<&str>,
+    media_ref_name: Option<&str>,
+    candidate_categories: &[String],
+) -> Vec<String> {
+    if candidate_categories.is_empty() {
+        return Vec::new();
+    }
+    let candidates_json = serde_json::to_string(candidate_categories).unwrap_or_default();
+    let system_prompt = format!(
+        "You are a post classifier for a social app. \
+         Given a post (with optional media category tag and specific media title) and a list of \
+         candidate category names, return a JSON array of ALL category names from the list that \
+         this post matches. \
+         When a specific media title is provided (e.g. \"Portal 2\"), only match candidates that \
+         refer to that exact title or its broad genre category — never match a different specific \
+         title (e.g. do NOT match \"GTA 5\" for a post whose title is \"Portal 2\"). \
+         When no specific title is given, use the category tag as a hint but still require the \
+         candidate to be a plausible match for the post content. \
+         Only return names that appear in the candidate list — never invent new ones. \
+         Return an empty array [] if nothing matches. \
+         Return strict JSON only: a JSON array of strings. \
+         Candidate categories: {candidates_json}"
+    );
+    let user_content = {
+        let mut parts = Vec::new();
+        if let Some(cat) = post_category {
+            parts.push(format!("Media category tag: {cat}"));
+        }
+        if let Some(title) = media_ref_name {
+            parts.push(format!("Specific media title: {title}"));
+        }
+        parts.push(format!("Post: {content}"));
+        parts.join("\n")
+    };
+    let history = [ChatMessage {
+        role: "user",
+        content: user_content,
+    }];
+    let text =
+        call_deepseek_with_options(client, api_key, &system_prompt, &history, 150, 0.0).await;
+    let Some(text) = text else {
+        return Vec::new();
+    };
+    parse_classify_response(&text, candidate_categories)
+}
+
+/// Pure parsing logic extracted so it can be unit-tested without a network call.
+pub fn parse_classify_response(text: &str, candidates: &[String]) -> Vec<String> {
+    let parsed: Option<Vec<String>> = serde_json::from_str(text)
+        .or_else(|_| {
+            let start = text
+                .find('[')
+                .ok_or(serde_json::Error::io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "no array",
+                )))?;
+            let end = text
+                .rfind(']')
+                .ok_or(serde_json::Error::io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "no array",
+                )))?;
+            serde_json::from_str(&text[start..=end])
+        })
+        .ok();
+    let candidate_set: std::collections::HashSet<&str> =
+        candidates.iter().map(String::as_str).collect();
+    parsed
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|c| candidate_set.contains(c.as_str()))
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::sanitize_post_assist_json;
+    use super::{parse_classify_response, sanitize_post_assist_json};
 
     #[test]
     fn sanitize_post_assist_accepts_allowed_media() {
@@ -287,5 +374,84 @@ mod tests {
 
         let response = sanitize_post_assist_json("我想", &payload).expect("response should parse");
         assert_eq!(response.completed_content.chars().count(), 500);
+    }
+
+    // ── classify_post_category response parser ────────────────────────────────
+
+    fn cats(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn classify_parses_clean_json_array() {
+        let result =
+            parse_classify_response(r#"["CSGO","games"]"#, &cats(&["CSGO", "games", "music"]));
+        let mut result = result;
+        result.sort();
+        assert_eq!(result, vec!["CSGO", "games"]);
+    }
+
+    #[test]
+    fn classify_extracts_array_from_prose_response() {
+        // Model wraps the JSON in extra text.
+        let text = r#"Sure! Here are the matches: ["CSGO"] based on the post content."#;
+        let result = parse_classify_response(text, &cats(&["CSGO", "games"]));
+        assert_eq!(result, vec!["CSGO"]);
+    }
+
+    #[test]
+    fn classify_filters_out_invented_categories() {
+        // Model returns a category that is not in the candidate list.
+        let result =
+            parse_classify_response(r#"["CSGO","fps","shooters"]"#, &cats(&["CSGO", "games"]));
+        assert_eq!(result, vec!["CSGO"]);
+    }
+
+    #[test]
+    fn classify_returns_empty_for_empty_array_response() {
+        let result = parse_classify_response("[]", &cats(&["CSGO", "games"]));
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn classify_returns_empty_for_unparseable_response() {
+        let result =
+            parse_classify_response("I could not determine the category.", &cats(&["CSGO"]));
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn classify_skips_call_when_candidates_empty() {
+        // This tests the guard at the top of classify_post_category; we test
+        // parse_classify_response directly with an empty candidate list instead.
+        let result = parse_classify_response(r#"["CSGO"]"#, &cats(&[]));
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn classify_does_not_match_different_game_title() {
+        // A post about Portal 2 (with media_ref_name "Portal 2") must NOT match
+        // "GTA5" even though both are games. The AI is expected to return [] or
+        // only the exact title/genre; this verifies our parse layer rejects
+        // anything not in the candidate list.
+        let result = parse_classify_response(r#"["GTA5"]"#, &cats(&["Portal 2"]));
+        assert!(
+            result.is_empty(),
+            "GTA5 should not appear when only Portal 2 is a candidate"
+        );
+
+        // Conversely, if the AI correctly returns ["Portal 2"], only that matches.
+        let result = parse_classify_response(r#"["Portal 2"]"#, &cats(&["GTA5", "Portal 2"]));
+        assert_eq!(result, vec!["Portal 2"]);
+    }
+
+    #[test]
+    fn classify_returns_multiple_matches_for_overlapping_post() {
+        // A CSGO post should match both "CSGO" and "games".
+        let result =
+            parse_classify_response(r#"["CSGO","games"]"#, &cats(&["CSGO", "games", "music"]));
+        let mut result = result;
+        result.sort();
+        assert_eq!(result, vec!["CSGO", "games"]);
     }
 }

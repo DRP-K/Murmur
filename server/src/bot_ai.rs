@@ -227,13 +227,16 @@ async fn call_deepseek_with_options(
         .map(str::to_owned)
 }
 
-/// Given post content and a list of candidate category names (from recipients' favourites),
-/// returns the subset of candidates that the post matches. Returns an empty Vec if nothing fits.
-/// Skips the AI call entirely when `candidate_categories` is empty.
+/// Given post content, an optional post-assist category tag, and a list of candidate category
+/// names (from recipients' favourites), returns the subset of candidates that the post matches.
+/// Returns an empty Vec if nothing fits. Skips the AI call entirely when `candidate_categories`
+/// is empty. The `post_category` hint (e.g. "games") is forwarded to the model so that a post
+/// whose content does not explicitly name its subject is still matched to related favourites.
 pub async fn classify_post_category(
     client: &Client,
     api_key: &str,
     content: &str,
+    post_category: Option<&str>,
     candidate_categories: &[String],
 ) -> Vec<String> {
     if candidate_categories.is_empty() {
@@ -242,17 +245,23 @@ pub async fn classify_post_category(
     let candidates_json = serde_json::to_string(candidate_categories).unwrap_or_default();
     let system_prompt = format!(
         "You are a post classifier for a social app. \
-         Given a post and a list of candidate category names, return a JSON array of ALL category \
-         names from the list that this post matches. \
-         A post about CSGO gameplay should match both \"CSGO\" and \"games\" if both appear. \
+         Given a post (and an optional media category tag) and a list of candidate category names, \
+         return a JSON array of ALL category names from the list that this post matches. \
+         Use the media category tag as a strong hint — if a post is tagged as \"games\" and the \
+         candidate list contains \"games\" or a specific game title that the post content implies, \
+         include those matches even when the content is brief or indirect. \
          Only return names that appear in the candidate list — never invent new ones. \
          Return an empty array [] if nothing matches. \
          Return strict JSON only: a JSON array of strings. \
          Candidate categories: {candidates_json}"
     );
+    let user_content = match post_category {
+        Some(cat) => format!("Media category tag: {cat}\nPost: {content}"),
+        None => format!("Post: {content}"),
+    };
     let history = [ChatMessage {
         role: "user",
-        content: format!("Post: {content}"),
+        content: user_content,
     }];
     let text =
         call_deepseek_with_options(client, api_key, &system_prompt, &history, 150, 0.0).await;

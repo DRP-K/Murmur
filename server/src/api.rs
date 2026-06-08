@@ -451,6 +451,7 @@ pub async fn post_post(
         let state2 = state.clone();
         let post_id = payload.id.clone();
         let content = payload.content.clone();
+        let post_category = payload.category.clone();
         let recipient_ids: Vec<String> = payload.recipient_ids.clone();
         tokio::spawn(async move {
             let Ok(mut conn) = pool.get() else { return };
@@ -468,8 +469,14 @@ pub async fn post_post(
             if candidates.is_empty() {
                 return;
             }
-            let matched =
-                bot_ai::classify_post_category(&http, &api_key, &content, &candidates).await;
+            let matched = bot_ai::classify_post_category(
+                &http,
+                &api_key,
+                &content,
+                post_category.as_deref(),
+                &candidates,
+            )
+            .await;
             if matched.is_empty() {
                 return;
             }
@@ -1114,8 +1121,14 @@ async fn rescan_posts_for_category(
             continue;
         }
 
-        let matched =
-            bot_ai::classify_post_category(http, api_key, &post.content, &candidates).await;
+        let matched = bot_ai::classify_post_category(
+            http,
+            api_key,
+            &post.content,
+            post.category.as_deref(),
+            &candidates,
+        )
+        .await;
 
         if !matched.is_empty() {
             if let Err(e) = repository::set_post_categories(&mut conn, &post.id, &matched) {

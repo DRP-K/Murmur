@@ -275,14 +275,18 @@ pub async fn classify_post_category(
 pub fn parse_classify_response(text: &str, candidates: &[String]) -> Vec<String> {
     let parsed: Option<Vec<String>> = serde_json::from_str(text)
         .or_else(|_| {
-            let start = text.find('[').ok_or(serde_json::Error::io(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "no array",
-            )))?;
-            let end = text.rfind(']').ok_or(serde_json::Error::io(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "no array",
-            )))?;
+            let start = text
+                .find('[')
+                .ok_or(serde_json::Error::io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "no array",
+                )))?;
+            let end = text
+                .rfind(']')
+                .ok_or(serde_json::Error::io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "no array",
+                )))?;
             serde_json::from_str(&text[start..=end])
         })
         .ok();
@@ -365,7 +369,8 @@ mod tests {
 
     #[test]
     fn classify_parses_clean_json_array() {
-        let result = parse_classify_response(r#"["CSGO","games"]"#, &cats(&["CSGO", "games", "music"]));
+        let result =
+            parse_classify_response(r#"["CSGO","games"]"#, &cats(&["CSGO", "games", "music"]));
         let mut result = result;
         result.sort();
         assert_eq!(result, vec!["CSGO", "games"]);
@@ -382,7 +387,8 @@ mod tests {
     #[test]
     fn classify_filters_out_invented_categories() {
         // Model returns a category that is not in the candidate list.
-        let result = parse_classify_response(r#"["CSGO","fps","shooters"]"#, &cats(&["CSGO", "games"]));
+        let result =
+            parse_classify_response(r#"["CSGO","fps","shooters"]"#, &cats(&["CSGO", "games"]));
         assert_eq!(result, vec!["CSGO"]);
     }
 
@@ -394,7 +400,8 @@ mod tests {
 
     #[test]
     fn classify_returns_empty_for_unparseable_response() {
-        let result = parse_classify_response("I could not determine the category.", &cats(&["CSGO"]));
+        let result =
+            parse_classify_response("I could not determine the category.", &cats(&["CSGO"]));
         assert!(result.is_empty());
     }
 
@@ -409,10 +416,8 @@ mod tests {
     #[test]
     fn classify_returns_multiple_matches_for_overlapping_post() {
         // A CSGO post should match both "CSGO" and "games".
-        let result = parse_classify_response(
-            r#"["CSGO","games"]"#,
-            &cats(&["CSGO", "games", "music"]),
-        );
+        let result =
+            parse_classify_response(r#"["CSGO","games"]"#, &cats(&["CSGO", "games", "music"]));
         let mut result = result;
         result.sort();
         assert_eq!(result, vec!["CSGO", "games"]);

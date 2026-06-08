@@ -22,10 +22,10 @@ use crate::seed;
 use crate::wire::{
     AckGroupMessageRequest, AckPostRequest, AddFavouriteCategoryRequest, AddFriendRequest,
     AuthRequest, AuthResponse, CreatePostRequest, FavouriteCategoriesResponse, FriendInfo,
-    FriendListResponse, GroupInfo, GroupListResponse, GroupMessageListResponse, InviteTokenResponse,
-    MediaUploadResponse, MessageListResponse, PostAssistRequest, PostAssistResponse,
-    PostListResponse, RedeemInviteTokenRequest, RegisterRequest, SendGroupMessageRequest,
-    SendMessageRequest, ServerEnvelope,
+    FriendListResponse, GroupInfo, GroupListResponse, GroupMessageListResponse,
+    InviteTokenResponse, MediaUploadResponse, MessageListResponse, PostAssistRequest,
+    PostAssistResponse, PostListResponse, RedeemInviteTokenRequest, RegisterRequest,
+    SendGroupMessageRequest, SendMessageRequest, ServerEnvelope,
 };
 
 #[derive(Debug)]
@@ -563,8 +563,8 @@ pub async fn get_posts(
 ) -> Result<Json<PostListResponse>, ApiError> {
     let user_id = authed_user(&headers, &state)?;
     let mut conn = state.pool.get().map_err(db_error)?;
-    let raw_posts = repository::list_pending_posts(&mut conn, &user_id, now_ts())
-        .map_err(db_error)?;
+    let raw_posts =
+        repository::list_pending_posts(&mut conn, &user_id, now_ts()).map_err(db_error)?;
     let post_ids: Vec<&str> = raw_posts.iter().map(|p| p.id.as_str()).collect();
     let categories_map =
         repository::list_post_categories_for_posts(&mut conn, &post_ids).map_err(db_error)?;
@@ -1049,7 +1049,8 @@ pub async fn list_favourites(
 ) -> Result<Json<FavouriteCategoriesResponse>, ApiError> {
     let user_id = authed_user(&headers, &state)?;
     let mut conn = state.pool.get().map_err(db_error)?;
-    let categories = repository::list_favourite_categories(&mut conn, &user_id).map_err(db_error)?;
+    let categories =
+        repository::list_favourite_categories(&mut conn, &user_id).map_err(db_error)?;
     Ok(Json(FavouriteCategoriesResponse { categories }))
 }
 
@@ -1066,9 +1067,8 @@ pub async fn add_favourite(
         ));
     }
     let mut conn = state.pool.get().map_err(db_error)?;
-    let inserted =
-        repository::add_favourite_category(&mut conn, &user_id, &category, now_ts())
-            .map_err(db_error)?;
+    let inserted = repository::add_favourite_category(&mut conn, &user_id, &category, now_ts())
+        .map_err(db_error)?;
     info!(user_id = %user_id, category = %category, "favourite category added");
 
     // Rescan existing posts for this user against the newly added category.
@@ -1162,7 +1162,9 @@ async fn rescan_posts_for_category(
     }
     state.send_to_online(
         user_id,
-        ServerEnvelope::RescanComplete { category: category.to_string() },
+        ServerEnvelope::RescanComplete {
+            category: category.to_string(),
+        },
     );
 }
 

@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 use super::models::{
     Friendship, Group, GroupMember, GroupMessage, NewFriendship, NewGroup, NewGroupMember,
-    NewGroupMessage, NewGroupMessageDelivery, NewPendingMessage, NewPost, NewPostCategory,
-    NewPostDelivery, NewPendingRescanCompletion, NewUser, NewUserFavouriteCategory, PendingMessage,
+    NewGroupMessage, NewGroupMessageDelivery, NewPendingMessage, NewPendingRescanCompletion,
+    NewPost, NewPostCategory, NewPostDelivery, NewUser, NewUserFavouriteCategory, PendingMessage,
     Post, PostDelivery, User,
 };
 use super::schema::{
@@ -786,7 +786,8 @@ mod tests {
         assert_eq!(map["u2"], vec!["music"]);
 
         // User with no favourites should not appear in the map.
-        let empty_map = list_favourite_categories_for_users(&mut conn, &["u1", "u2", "nonexistent"]).unwrap();
+        let empty_map =
+            list_favourite_categories_for_users(&mut conn, &["u1", "u2", "nonexistent"]).unwrap();
         assert!(!empty_map.contains_key("nonexistent"));
     }
 
@@ -1012,8 +1013,7 @@ pub fn drain_rescan_completions(
         .select(pending_rescan_completions::category)
         .load(conn)?;
     diesel::delete(
-        pending_rescan_completions::table
-            .filter(pending_rescan_completions::user_id.eq(user_id)),
+        pending_rescan_completions::table.filter(pending_rescan_completions::user_id.eq(user_id)),
     )
     .execute(conn)?;
     Ok(categories)

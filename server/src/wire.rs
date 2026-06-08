@@ -75,7 +75,10 @@ pub enum ServerEnvelope {
         sent_at: i64,
     },
     #[serde(rename = "post_category_update")]
-    PostCategoryUpdate { post_id: String, categories: Vec<String> },
+    PostCategoryUpdate {
+        post_id: String,
+        categories: Vec<String>,
+    },
     #[serde(rename = "rescan_complete")]
     RescanComplete { category: String },
     #[serde(rename = "group_update")]

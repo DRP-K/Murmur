@@ -190,6 +190,7 @@ jobs:
       - name: Deploy staged
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          RAWG_API_KEY: ${{ secrets.RAWG_API_KEY }}
         run: |
           docker compose -p murmur-staged -f compose.staged.yml down -v
           docker compose -p murmur-staged -f compose.staged.yml up -d --build --remove-orphans
@@ -213,6 +214,7 @@ jobs:
       - name: Deploy production
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          RAWG_API_KEY: ${{ secrets.RAWG_API_KEY }}
         run: |
           docker compose -f compose.production.yml down
           docker compose -p murmur-production -f compose.production.yml up -d --build --remove-orphans

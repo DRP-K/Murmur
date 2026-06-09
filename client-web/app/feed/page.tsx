@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useReducer, useRef, useState } from 'react'
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Search, Star, X } from 'lucide-react'
+import { Plus, Search, X } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import {
   getPosts,
@@ -12,7 +12,7 @@ import {
 } from '@/lib/relay'
 import * as ws from '@/lib/ws'
 import { db } from '@/lib/db'
-import { normalizePostTag } from '@/lib/postTags'
+import { normalizePostTag, fuzzyMatchTag } from '@/lib/postTags'
 import { PostCard } from '@/components/PostCard'
 import { ComposeSheet } from '@/components/ComposeSheet'
 import { ReachModal } from '@/components/ReachModal'
@@ -68,70 +68,50 @@ export default function FeedPage() {
   )
   const [composeOpen, setComposeOpen] = useState(false)
   const [reachPost, setReachPost] = useState<Post | null>(null)
-  const [favoritePostTags, setFavoritePostTags] = useState<string[]>([])
+  const [searchHistory, setSearchHistory] = useState<string[]>([])
   const [searchInput, setSearchInput] = useState('')
   const [resultQuery, setResultQuery] = useState<string | null>(null)
   const [searchFocused, setSearchFocused] = useState(false)
-  const [deleteVisibleTag, setDeleteVisibleTag] = useState<string | null>(null)
   const searchBlurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchDropdownRef = useRef<HTMLDivElement>(null)
-  const tagLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const tagLongPressTriggeredRef = useRef(false)
 
-  // Load local favourite post tags on mount.
+  const allPostTags = useMemo(() => {
+    const tagSet = new Set<string>()
+    for (const post of posts) {
+      for (const tag of post.tags) {
+        tagSet.add(tag)
+      }
+    }
+    return Array.from(tagSet).sort()
+  }, [posts])
+
+  // Load search history on mount.
   useEffect(() => {
     if (!bootstrapped) return
-    db.favoritePostTags.orderBy('createdAt').reverse().toArray()
-      .then((rows) => setFavoritePostTags(rows.map((row) => row.tag)))
+    db.searchHistory.orderBy('searchedAt').reverse().limit(5).toArray()
+      .then((rows) => setSearchHistory(rows.map((row) => row.query)))
       .catch(console.error)
   }, [bootstrapped])
-
-  async function addFavoritePostTag(tag: string) {
-    const normalized = normalizePostTag(tag)
-    if (!normalized || favoritePostTags.includes(normalized)) return
-    setFavoritePostTags((prev) => [normalized, ...prev])
-    await db.favoritePostTags.put({ tag: normalized, createdAt: Date.now() }).catch(console.error)
-  }
 
   function keepSearchDropdownOpen() {
     if (searchBlurTimerRef.current) clearTimeout(searchBlurTimerRef.current)
     setSearchFocused(true)
   }
 
-  async function removeFavoritePostTag(tag: string) {
-    setDeleteVisibleTag(null)
-    setFavoritePostTags((prev) => prev.filter((value) => value !== tag))
-    await db.favoritePostTags.delete(tag).catch(console.error)
+  async function addToSearchHistory(query: string) {
+    if (!query) return
+    setSearchHistory((prev) => [query, ...prev.filter((q) => q !== query)].slice(0, 5))
+    await db.searchHistory.put({ query, searchedAt: Date.now() }).catch(console.error)
+    const all = await db.searchHistory.orderBy('searchedAt').toArray().catch(() => [])
+    if (all.length > 5) {
+      const toDelete = all.slice(0, all.length - 5).map((e) => e.query)
+      await db.searchHistory.bulkDelete(toDelete).catch(console.error)
+    }
   }
 
-  async function touchFavoritePostTags(tags: string[]) {
-    const existing = tags.filter((tag) => favoritePostTags.includes(tag))
-    if (existing.length === 0) return
-    const now = Date.now()
-    setFavoritePostTags((prev) => [
-      ...existing,
-      ...prev.filter((tag) => !existing.includes(tag)),
-    ])
-    await Promise.all(
-      existing.map((tag, index) =>
-        db.favoritePostTags.put({ tag, createdAt: now - index }).catch(console.error),
-      ),
-    )
-  }
-
-  function startTagLongPress(tag: string) {
-    clearTagLongPress()
-    tagLongPressTriggeredRef.current = false
-    tagLongPressTimerRef.current = setTimeout(() => {
-      tagLongPressTriggeredRef.current = true
-      setDeleteVisibleTag(tag)
-    }, 450)
-  }
-
-  function clearTagLongPress() {
-    if (!tagLongPressTimerRef.current) return
-    clearTimeout(tagLongPressTimerRef.current)
-    tagLongPressTimerRef.current = null
+  async function removeFromSearchHistory(query: string) {
+    setSearchHistory((prev) => prev.filter((q) => q !== query))
+    await db.searchHistory.delete(query).catch(console.error)
   }
 
   // Fetch pending posts on mount and add to global store.
@@ -266,14 +246,24 @@ export default function FeedPage() {
     return { tags, terms }
   }
 
-  function setSearchTag(tag: string, selected: boolean) {
-    const normalized = normalizePostTag(tag)
-    if (!normalized) return
-    const parts = extractSearchParts(searchInput)
-    const nextTags = selected
-      ? parts.tags.filter((value) => value !== normalized)
-      : [...parts.tags, normalized]
-    setSearchInput([...parts.terms, ...nextTags].join(' '))
+  function getActiveSuggestions(input: string): string[] {
+    const currentTags = extractSearchParts(input).tags
+    const available = allPostTags.filter(tag => !currentTags.includes(tag))
+    const words = input.split(/\s+/)
+    const lastWord = words[words.length - 1] ?? ''
+    if (lastWord && !input.endsWith(' ')) {
+      // Typing: fuzzy-matched tags first, then the rest
+      const matched = available.filter(tag => fuzzyMatchTag(tag, lastWord))
+      const rest = available.filter(tag => !fuzzyMatchTag(tag, lastWord))
+      return [...matched, ...rest].slice(0, 15)
+    }
+    return available.slice(0, 15)
+  }
+
+  function applySuggestion(tag: string) {
+    const words = searchInput.trim().split(/\s+/).filter(Boolean)
+    const withoutLast = words.slice(0, -1)
+    setSearchInput([...withoutLast, tag].join(' '))
   }
 
   function runSearch(query: string) {
@@ -286,7 +276,7 @@ export default function FeedPage() {
     setSearchInput(trimmed)
     setResultQuery(trimmed)
     setSearchFocused(false)
-    touchFavoritePostTags(extractSearchParts(trimmed).tags)
+    addToSearchHistory(trimmed)
   }
 
   function matchesSearch(post: Post, query: string): boolean {
@@ -301,7 +291,7 @@ export default function FeedPage() {
   const visiblePosts = resultQuery
     ? posts.filter((post) => matchesSearch(post, resultQuery))
     : posts
-  const selectedSearchTags = extractSearchParts(searchInput).tags
+  const tagSuggestions = getActiveSuggestions(searchInput)
 
   return (
     <>
@@ -321,7 +311,7 @@ export default function FeedPage() {
               <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
               <input
                 value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
+                onChange={(e) => { setSearchInput(e.target.value); setSearchFocused(true) }}
                 onFocus={() => {
                   if (searchBlurTimerRef.current) clearTimeout(searchBlurTimerRef.current)
                   setSearchFocused(true)
@@ -333,19 +323,8 @@ export default function FeedPage() {
                   }, 120)
                 }}
                 placeholder="Search posts or tags"
-                className={`w-full rounded-full border border-zinc-200 bg-zinc-50 py-2 pl-9 text-sm text-zinc-800 outline-none focus:border-zinc-400 ${searchInput ? 'pr-16' : 'pr-9'}`}
+                className={`w-full rounded-full border border-zinc-200 bg-zinc-50 py-2 pl-9 text-sm text-zinc-800 outline-none focus:border-zinc-400 ${searchInput || resultQuery ? 'pr-9' : ''}`}
               />
-              {searchInput && (
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => addFavoritePostTag(searchInput.trim())}
-                  className="absolute right-9 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-amber-500"
-                  aria-label="Save as favourite keyword"
-                >
-                  <Star size={14} fill={favoritePostTags.includes(normalizePostTag(searchInput.trim()) ?? '') ? 'currentColor' : 'none'} />
-                </button>
-              )}
               {(searchInput || resultQuery) && (
                 <button
                   type="button"
@@ -368,66 +347,74 @@ export default function FeedPage() {
                 onMouseDown={keepSearchDropdownOpen}
                 onFocus={keepSearchDropdownOpen}
               >
-              <div className="mb-2 flex flex-wrap gap-1.5">
-                {favoritePostTags.map((tag) => (
-                  <span
-                    key={tag}
-                    className={`inline-flex items-center rounded-md border text-xs font-medium ${
-                      selectedSearchTags.includes(tag)
-                        ? 'border-zinc-900 bg-zinc-900 text-white'
-                        : 'border-zinc-200 bg-zinc-50 text-zinc-700'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault()
-                        if (tagLongPressTriggeredRef.current) {
-                          tagLongPressTriggeredRef.current = false
-                          return
-                        }
-                        setSearchTag(tag, selectedSearchTags.includes(tag))
-                      }}
-                      onPointerDown={() => startTagLongPress(tag)}
-                      onPointerUp={clearTagLongPress}
-                      onPointerCancel={clearTagLongPress}
-                      onPointerLeave={clearTagLongPress}
-                      className="px-2 py-1"
-                    >
-                      {tag}
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`Remove ${tag}`}
-                      onMouseDown={(e) => {
-                        e.preventDefault()
-                        removeFavoritePostTag(tag)
-                      }}
-                      className={`mr-1 h-4 w-4 items-center justify-center rounded-sm hover:bg-black/10 md:inline-flex landscape:inline-flex ${
-                        deleteVisibleTag === tag ? 'inline-flex' : 'hidden'
-                      }`}
-                    >
-                      <X size={10} />
-                    </button>
-                  </span>
-                ))}
-                {favoritePostTags.length === 0 && (
-                  <span className="px-1 py-1 text-xs text-zinc-400">No saved tags.</span>
-                )}
-              </div>
+              {tagSuggestions.length > 0 && (
+                <div className="mb-2">
+                  <div className="mb-1 px-1 text-xs text-zinc-400">Suggestions</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {tagSuggestions.map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          applySuggestion(tag)
+                        }}
+                        className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs font-medium text-zinc-700 hover:border-zinc-400 hover:bg-zinc-100"
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {searchHistory.length > 0 && (
+                <div className={tagSuggestions.length > 0 ? 'border-t border-zinc-100 pt-2' : ''}>
+                  <div className="mb-1 px-1 text-xs text-zinc-400">Recent</div>
+                  <div className="flex flex-col gap-0.5">
+                    {searchHistory.map((query) => (
+                      <div key={query} className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            runSearch(query)
+                          }}
+                          className="flex-1 truncate rounded-md px-2 py-1 text-left text-xs text-zinc-700 hover:bg-zinc-100"
+                        >
+                          {query}
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Remove ${query}`}
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            removeFromSearchHistory(query)
+                          }}
+                          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-sm text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                        >
+                          <X size={10} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {searchHistory.length === 0 && tagSuggestions.length === 0 && (
+                <span className="px-1 py-1 text-xs text-zinc-400">No recent searches.</span>
+              )}
             </div>
           )}
           </div>
-          {favoritePostTags.length > 0 && (
+          {searchHistory.length > 0 && (
             <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5">
-              {favoritePostTags.map((tag) => (
+              {searchHistory.map((query) => (
                 <button
-                  key={tag}
+                  key={query}
                   type="button"
-                  onClick={() => runSearch(tag)}
+                  onClick={() => runSearch(query)}
                   className="flex-shrink-0 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:border-zinc-400"
                 >
-                  {tag}
+                  {query}
                 </button>
               ))}
             </div>
@@ -469,7 +456,6 @@ export default function FeedPage() {
                 onReach={() => setReachPost(post)}
                 onJoinGroup={() => handleJoinGroup(post).catch(console.error)}
                 onTagClick={(tag) => runSearch(tag)}
-                onFavoriteTag={(tag) => addFavoritePostTag(tag)}
               />
             )
           })

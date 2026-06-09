@@ -10,12 +10,15 @@ services:
     image: ${PRODUCTION_IMAGE:-murmur-server:production}
     container_name: ${PRODUCTION_CONTAINER_NAME:-murmur-server-production}
     restart: always
+    env_file:
+      - path: /etc/murmur.env
+        required: false
     environment:
       DATABASE_URL: ${PRODUCTION_DATABASE_URL:-/var/app/data/production.sqlite3}
       PORT: ${PRODUCTION_CONTAINER_PORT:-3000}
       BIND_ADDR: 0.0.0.0:${PRODUCTION_CONTAINER_PORT:-3000}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
-      RAWG_API_KEY: ${NEXT_PUBLIC_RAWG_API_KEY}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      RAWG_API_KEY: ${RAWG_API_KEY:-${NEXT_PUBLIC_RAWG_API_KEY:-}}
     volumes:
       - murmur-production-data:/var/app/data
     networks:

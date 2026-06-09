@@ -10,12 +10,15 @@ services:
     image: ${STAGED_IMAGE:-murmur-server:staged}
     container_name: ${STAGED_CONTAINER_NAME:-murmur-server-staged}
     restart: always
+    env_file:
+      - path: /etc/murmur.env
+        required: false
     environment:
       DATABASE_URL: ${STAGED_DATABASE_URL:-/var/app/data/staged.sqlite3}
       PORT: ${STAGED_CONTAINER_PORT:-3000}
       BIND_ADDR: 0.0.0.0:${STAGED_CONTAINER_PORT:-3000}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
-      RAWG_API_KEY: ${NEXT_PUBLIC_RAWG_API_KEY}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      RAWG_API_KEY: ${RAWG_API_KEY:-${NEXT_PUBLIC_RAWG_API_KEY:-}}
     volumes:
       - murmur-staged-data:/var/app/data
     networks:

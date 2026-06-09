@@ -2,7 +2,7 @@
 
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Search, X } from 'lucide-react'
+import { Plus, Search, Star, X } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import {
   getPosts,
@@ -72,7 +72,6 @@ export default function FeedPage() {
   const [searchInput, setSearchInput] = useState('')
   const [resultQuery, setResultQuery] = useState<string | null>(null)
   const [searchFocused, setSearchFocused] = useState(false)
-  const [customTagInput, setCustomTagInput] = useState('')
   const [deleteVisibleTag, setDeleteVisibleTag] = useState<string | null>(null)
   const searchBlurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchDropdownRef = useRef<HTMLDivElement>(null)
@@ -334,8 +333,19 @@ export default function FeedPage() {
                   }, 120)
                 }}
                 placeholder="Search posts or tags"
-                className="w-full rounded-full border border-zinc-200 bg-zinc-50 py-2 pl-9 pr-9 text-sm text-zinc-800 outline-none focus:border-zinc-400"
+                className={`w-full rounded-full border border-zinc-200 bg-zinc-50 py-2 pl-9 text-sm text-zinc-800 outline-none focus:border-zinc-400 ${searchInput ? 'pr-16' : 'pr-9'}`}
               />
+              {searchInput && (
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => addFavoritePostTag(searchInput.trim())}
+                  className="absolute right-9 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-amber-500"
+                  aria-label="Save as favourite keyword"
+                >
+                  <Star size={14} fill={favoritePostTags.includes(normalizePostTag(searchInput.trim()) ?? '') ? 'currentColor' : 'none'} />
+                </button>
+              )}
               {(searchInput || resultQuery) && (
                 <button
                   type="button"
@@ -405,30 +415,6 @@ export default function FeedPage() {
                   <span className="px-1 py-1 text-xs text-zinc-400">No saved tags.</span>
                 )}
               </div>
-              <form
-                className="flex gap-1.5 border-t border-zinc-100 pt-2"
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  addFavoritePostTag(customTagInput)
-                  setCustomTagInput('')
-                }}
-              >
-                <input
-                  value={customTagInput}
-                  onChange={(e) => setCustomTagInput(e.target.value)}
-                  onFocus={keepSearchDropdownOpen}
-                  placeholder="Add favorite keyword"
-                  maxLength={50}
-                  className="min-w-0 flex-1 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs text-zinc-800 outline-none focus:border-zinc-400"
-                />
-                <button
-                  type="submit"
-                  className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-zinc-900 text-white"
-                  aria-label="Add favorite keyword"
-                >
-                  <Plus size={13} />
-                </button>
-              </form>
             </div>
           )}
           </div>

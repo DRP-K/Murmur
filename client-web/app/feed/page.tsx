@@ -26,7 +26,11 @@ type Reactions = Map<string, Set<string>>
 function toggleReaction(prev: Reactions, postId: string, emoji: string): Reactions {
   const next = new Map(prev)
   const set = new Set(next.get(postId) ?? [])
-  set.has(emoji) ? set.delete(emoji) : set.add(emoji)
+  if (set.has(emoji)) {
+    set.delete(emoji)
+  } else {
+    set.add(emoji)
+  }
   next.set(postId, set)
   return next
 }
@@ -80,8 +84,11 @@ export default function FeedPage() {
     () => new Set<string>(),
   )
   const [editingFavourites, setEditingFavourites] = useState(false)
+  const [deleteVisibleCategory, setDeleteVisibleCategory] = useState<string | null>(null)
   const [newCategoryInput, setNewCategoryInput] = useState('')
   const newCategoryRef = useRef<HTMLInputElement>(null)
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const longPressTriggeredRef = useRef(false)
 
   // Load favourite categories on mount.
   useEffect(() => {
@@ -105,8 +112,30 @@ export default function FeedPage() {
 
   async function handleRemoveFavourite(cat: string) {
     if (!token) return
+    setDeleteVisibleCategory(null)
+    setActiveFilters((prev) => {
+      if (!prev.has(cat)) return prev
+      const next = new Set(prev)
+      next.delete(cat)
+      return next
+    })
     removeFavouriteCategoryStore(cat)
     await removeFavouriteCategory(token, cat).catch(() => addFavouriteCategoryStore(cat))
+  }
+
+  function startCategoryLongPress(cat: string) {
+    clearCategoryLongPress()
+    longPressTriggeredRef.current = false
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true
+      setDeleteVisibleCategory(cat)
+    }, 450)
+  }
+
+  function clearCategoryLongPress() {
+    if (!longPressTimerRef.current) return
+    clearTimeout(longPressTimerRef.current)
+    longPressTimerRef.current = null
   }
 
   // Fetch pending posts on mount and add to global store.
@@ -242,7 +271,11 @@ export default function FeedPage() {
   function toggleFilter(key: string) {
     setActiveFilters((prev) => {
       const next = new Set(prev)
-      next.has(key) ? next.delete(key) : next.add(key)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
       return next
     })
   }
@@ -307,22 +340,50 @@ export default function FeedPage() {
           {favouriteCategories.map((cat) => {
             const active = activeFilters.has(cat)
             const sorting = rescansInProgress.includes(cat)
+            const showMobileDelete = deleteVisibleCategory === cat
             return (
-              <button
+              <span
                 key={cat}
-                onClick={() => toggleFilter(cat)}
-                title={sorting ? 'Murmur is still sorting posts into this category…' : undefined}
-                className={`flex flex-shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                className={`flex flex-shrink-0 items-center rounded-full text-xs font-medium transition-colors ${
                   active
                     ? 'bg-zinc-900 text-white'
                     : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
                 }`}
               >
-                {cat}
-                {sorting && (
-                  <span className="inline-block h-2 w-2 animate-spin rounded-full border border-current border-t-transparent" />
-                )}
-              </button>
+                <button
+                  onClick={() => {
+                    if (longPressTriggeredRef.current) {
+                      longPressTriggeredRef.current = false
+                      return
+                    }
+                    toggleFilter(cat)
+                  }}
+                  onPointerDown={() => startCategoryLongPress(cat)}
+                  onPointerUp={clearCategoryLongPress}
+                  onPointerCancel={clearCategoryLongPress}
+                  onPointerLeave={clearCategoryLongPress}
+                  title={sorting ? 'Murmur is still sorting posts into this category…' : undefined}
+                  className="flex items-center gap-1 rounded-full py-1 pl-3 pr-2"
+                >
+                  {cat}
+                  {sorting && (
+                    <span className="inline-block h-2 w-2 animate-spin rounded-full border border-current border-t-transparent" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Remove ${cat}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleRemoveFavourite(cat)
+                  }}
+                  className={`mr-1 h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-black/10 md:inline-flex landscape:inline-flex ${
+                    showMobileDelete ? 'inline-flex' : 'hidden'
+                  }`}
+                >
+                  <X size={10} />
+                </button>
+              </span>
             )
           })}
           <button
@@ -336,26 +397,6 @@ export default function FeedPage() {
 
         {editingFavourites && (
           <div className="border-t border-zinc-100 px-4 pb-3 pt-2">
-            <p className="mb-2 text-xs font-medium text-zinc-500">Favourite categories</p>
-            <div className="mb-2 flex flex-wrap gap-1.5">
-              {favouriteCategories.length === 0 && (
-                <span className="text-xs text-zinc-400">No favourites yet.</span>
-              )}
-              {favouriteCategories.map((cat) => (
-                <span
-                  key={cat}
-                  className="flex items-center gap-1 rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-700"
-                >
-                  {cat}
-                  <button
-                    onClick={() => handleRemoveFavourite(cat)}
-                    className="text-zinc-400 hover:text-zinc-700"
-                  >
-                    <X size={10} />
-                  </button>
-                </span>
-              ))}
-            </div>
             <form
               className="flex gap-2"
               onSubmit={(e) => {

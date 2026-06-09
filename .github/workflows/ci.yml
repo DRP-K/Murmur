@@ -5,6 +5,15 @@ on:
     branches: ["**"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staged'
+        type: choice
+        options:
+          - staged
+          - production
 
 env:
   CARGO_HOME: ${{ github.workspace }}/.cargo
@@ -167,7 +176,7 @@ jobs:
     name: Deploy staged (self-hosted)
     runs-on: self-hosted
     needs: [fmt-check, test-server, build-client-web-staged]
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staged'
     environment:
       name: staged
     steps:
@@ -190,7 +199,7 @@ jobs:
     name: Deploy production (self-hosted)
     runs-on: self-hosted
     needs: [fmt-check, test-server, build-client-web]
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
     environment:
       name: production
     steps:

@@ -1,6 +1,5 @@
 'use client'
 
-import { useRef, useState } from 'react'
 import { Heart, Waves, MessageCircle, Users } from 'lucide-react'
 import type { Post } from '@/lib/types'
 
@@ -13,7 +12,6 @@ interface Props {
   onReach: () => void
   onJoinGroup: () => void
   onTagClick: (tag: string) => void
-  onFavoriteTag: (tag: string) => void
 }
 
 function relativeTime(unixSec: number): string {
@@ -33,28 +31,9 @@ export function PostCard({
   onReach,
   onJoinGroup,
   onTagClick,
-  onFavoriteTag,
 }: Props) {
   const hasImage = !!post.image_url
   const isRally = !!post.rally_group_id
-  const [favoriteActionTag, setFavoriteActionTag] = useState<string | null>(null)
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const longPressTriggeredRef = useRef(false)
-
-  function startTagLongPress(tag: string) {
-    clearTagLongPress()
-    longPressTriggeredRef.current = false
-    longPressTimerRef.current = setTimeout(() => {
-      longPressTriggeredRef.current = true
-      setFavoriteActionTag(tag)
-    }, 450)
-  }
-
-  function clearTagLongPress() {
-    if (!longPressTimerRef.current) return
-    clearTimeout(longPressTimerRef.current)
-    longPressTimerRef.current = null
-  }
 
   return (
     <div className="relative overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
@@ -76,41 +55,14 @@ export function PostCard({
         <div className="mb-2 flex items-center justify-between text-xs text-zinc-400">
           <div className="flex items-center gap-1.5">
             {post.tags.map((tag) => (
-              <span key={tag} className="relative">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (longPressTriggeredRef.current) {
-                      longPressTriggeredRef.current = false
-                      return
-                    }
-                    onTagClick(tag)
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault()
-                    setFavoriteActionTag(tag)
-                  }}
-                  onPointerDown={() => startTagLongPress(tag)}
-                  onPointerUp={clearTagLongPress}
-                  onPointerCancel={clearTagLongPress}
-                  onPointerLeave={clearTagLongPress}
-                  className="rounded-md border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600 hover:border-zinc-400"
-                >
-                  {tag}
-                </button>
-                {favoriteActionTag === tag && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onFavoriteTag(tag)
-                      setFavoriteActionTag(null)
-                    }}
-                    className="absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-zinc-200 bg-white px-2 py-1 text-[10px] font-medium text-zinc-700 shadow-lg hover:border-zinc-400"
-                  >
-                    Save tag
-                  </button>
-                )}
-              </span>
+              <button
+                key={tag}
+                type="button"
+                onClick={() => onTagClick(tag)}
+                className="rounded-md border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600 hover:border-zinc-400"
+              >
+                {tag}
+              </button>
             ))}
             <span className="font-mono font-semibold text-zinc-500"># anon</span>
             {isRally && (

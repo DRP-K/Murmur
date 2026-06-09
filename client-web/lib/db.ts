@@ -70,9 +70,9 @@ export interface LocalFriendTag {
   tagId: string
 }
 
-export interface FavoritePostTag {
-  tag: string
-  createdAt: number
+export interface SearchHistoryEntry {
+  query: string
+  searchedAt: number
 }
 
 // Persisted conversation summary — mirrors ConversationMeta in the Zustand store.
@@ -129,7 +129,7 @@ class MurmurDatabase extends Dexie {
   anonMessages!: EntityTable<StoredAnonMessage, 'id'>
   tags!: EntityTable<LocalTag, 'id'>
   friendTags!: Table<LocalFriendTag, [string, string]>
-  favoritePostTags!: EntityTable<FavoritePostTag, 'tag'>
+  searchHistory!: EntityTable<SearchHistoryEntry, 'query'>
   groups!: EntityTable<StoredGroup, 'id'>
   groupMembers!: EntityTable<StoredGroupMember, 'id'>
   groupMessages!: EntityTable<StoredGroupMessage, 'id'>
@@ -197,6 +197,10 @@ class MurmurDatabase extends Dexie {
         delete post.media_ref_name
         delete post.categories
       })
+    })
+    this.version(13).stores({
+      favoritePostTags: null,
+      searchHistory: 'query, searchedAt',
     })
   }
 }

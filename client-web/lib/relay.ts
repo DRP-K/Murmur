@@ -224,26 +224,3 @@ export function wsUrl(token: string): string {
   const base = RELAY_URL.replace(/^http/, 'ws')
   return `${base}/api/ws?token=${encodeURIComponent(token)}`
 }
-
-export async function getFavouriteCategories(token: string): Promise<string[]> {
-  const res = await requireOk(await authedFetch(token, '/api/favourites'))
-  const data = await res.json()
-  return data.categories as string[]
-}
-
-export async function addFavouriteCategory(token: string, category: string): Promise<void> {
-  await requireOk(
-    await authedFetch(token, '/api/favourites', {
-      method: 'POST',
-      body: JSON.stringify({ category }),
-    }),
-  )
-}
-
-export async function removeFavouriteCategory(token: string, category: string): Promise<void> {
-  const res = await authedFetch(token, `/api/favourites/${encodeURIComponent(category)}`, {
-    method: 'DELETE',
-  })
-  if (res.status === 204 || res.status === 404) return
-  await requireOk(res)
-}

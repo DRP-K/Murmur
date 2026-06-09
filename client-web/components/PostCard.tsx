@@ -1,5 +1,6 @@
 'use client'
 
+import { useRef, useState } from 'react'
 import { Heart, Waves, MessageCircle, Users } from 'lucide-react'
 import type { Post } from '@/lib/types'
 
@@ -11,9 +12,9 @@ interface Props {
   onToggleResonate: () => void
   onReach: () => void
   onJoinGroup: () => void
+  onTagClick: (tag: string) => void
+  onFavoriteTag: (tag: string) => void
 }
-
-const CATEGORY_EMOJI: Record<string, string> = { movies: '🎬', music: '🎵', games: '🎮' }
 
 function relativeTime(unixSec: number): string {
   const diff = Math.floor(Date.now() / 1000) - unixSec
@@ -23,9 +24,37 @@ function relativeTime(unixSec: number): string {
   return `${Math.floor(diff / 86400)}d ago`
 }
 
-export function PostCard({ post, liked, resonated, onToggleLike, onToggleResonate, onReach, onJoinGroup }: Props) {
+export function PostCard({
+  post,
+  liked,
+  resonated,
+  onToggleLike,
+  onToggleResonate,
+  onReach,
+  onJoinGroup,
+  onTagClick,
+  onFavoriteTag,
+}: Props) {
   const hasImage = !!post.image_url
   const isRally = !!post.rally_group_id
+  const [favoriteActionTag, setFavoriteActionTag] = useState<string | null>(null)
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const longPressTriggeredRef = useRef(false)
+
+  function startTagLongPress(tag: string) {
+    clearTagLongPress()
+    longPressTriggeredRef.current = false
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true
+      setFavoriteActionTag(tag)
+    }, 450)
+  }
+
+  function clearTagLongPress() {
+    if (!longPressTimerRef.current) return
+    clearTimeout(longPressTimerRef.current)
+    longPressTimerRef.current = null
+  }
 
   return (
     <div className="relative overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm">
@@ -46,11 +75,43 @@ export function PostCard({ post, liked, resonated, onToggleLike, onToggleResonat
       <div className="relative p-4">
         <div className="mb-2 flex items-center justify-between text-xs text-zinc-400">
           <div className="flex items-center gap-1.5">
-            {post.category && (
-              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600">
-                {CATEGORY_EMOJI[post.category] ?? ''} {post.category}
+            {post.tags.map((tag) => (
+              <span key={tag} className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (longPressTriggeredRef.current) {
+                      longPressTriggeredRef.current = false
+                      return
+                    }
+                    onTagClick(tag)
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    setFavoriteActionTag(tag)
+                  }}
+                  onPointerDown={() => startTagLongPress(tag)}
+                  onPointerUp={clearTagLongPress}
+                  onPointerCancel={clearTagLongPress}
+                  onPointerLeave={clearTagLongPress}
+                  className="rounded-md border border-zinc-200 bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-600 hover:border-zinc-400"
+                >
+                  {tag}
+                </button>
+                {favoriteActionTag === tag && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onFavoriteTag(tag)
+                      setFavoriteActionTag(null)
+                    }}
+                    className="absolute left-0 top-full z-10 mt-1 whitespace-nowrap rounded-md border border-zinc-200 bg-white px-2 py-1 text-[10px] font-medium text-zinc-700 shadow-lg hover:border-zinc-400"
+                  >
+                    Save tag
+                  </button>
+                )}
               </span>
-            )}
+            ))}
             <span className="font-mono font-semibold text-zinc-500"># anon</span>
             {isRally && (
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
@@ -65,10 +126,6 @@ export function PostCard({ post, liked, resonated, onToggleLike, onToggleResonat
         <p className="mb-1 text-sm leading-relaxed text-zinc-800">
           {post.content}
         </p>
-
-        {post.media_ref_name && (
-          <p className="mb-3 text-xs text-zinc-500">{post.media_ref_name}</p>
-        )}
 
         {isRally && (
           <div className="mb-3 flex items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
@@ -116,7 +173,7 @@ export function PostCard({ post, liked, resonated, onToggleLike, onToggleResonat
           </>
         )}
 
-        {!post.media_ref_name && !post.attachment_url && !post.attachments?.length && <div className="mb-4" />}
+        {!post.attachment_url && !post.attachments?.length && <div className="mb-4" />}
 
         <div className="flex items-center gap-4">
           <button

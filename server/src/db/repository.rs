@@ -1,17 +1,13 @@
 use diesel::prelude::*;
 
-use std::collections::HashMap;
-
 use super::models::{
     Friendship, Group, GroupMember, GroupMessage, NewFriendship, NewGroup, NewGroupMember,
-    NewGroupMessage, NewGroupMessageDelivery, NewPendingMessage, NewPendingRescanCompletion,
-    NewPost, NewPostCategory, NewPostDelivery, NewUser, NewUserFavouriteCategory, PendingMessage,
-    Post, PostDelivery, User,
+    NewGroupMessage, NewGroupMessageDelivery, NewPendingMessage, NewPost, NewPostDelivery, NewUser,
+    PendingMessage, Post, PostDelivery, User,
 };
 use super::schema::{
     friendships, group_members, group_message_deliveries, group_messages, groups, pending_messages,
-    pending_rescan_completions, post_categories, post_deliveries, posts, user_favourite_categories,
-    users,
+    post_deliveries, posts, users,
 };
 
 pub fn register_user(
@@ -157,8 +153,7 @@ pub fn ensure_rich_post_with_delivery(
             .optional()?;
         let should_redeliver = existing.as_ref().is_none_or(|existing| {
             existing.content != post.content
-                || existing.category.as_deref() != post.category
-                || existing.media_ref_name.as_deref() != post.media_ref_name
+                || existing.tags != post.tags
                 || existing.image_url.as_deref() != post.image_url
         });
 
@@ -169,8 +164,7 @@ pub fn ensure_rich_post_with_delivery(
                         posts::author_id.eq(post.author_id),
                         posts::content.eq(post.content),
                         posts::timestamp.eq(post.timestamp),
-                        posts::category.eq(post.category),
-                        posts::media_ref_name.eq(post.media_ref_name),
+                        posts::tags.eq(post.tags),
                         posts::image_url.eq(post.image_url),
                     ))
                     .execute(conn)?;
@@ -247,7 +241,6 @@ pub fn list_pending_posts(
 }
 
 /// Returns all posts ever delivered to a user (delivered or not), newest first.
-/// Limited to 200 most recent to bound rescan cost.
 pub fn list_all_posts_for_user(
     conn: &mut SqliteConnection,
     recipient_id: &str,
@@ -645,9 +638,8 @@ mod tests {
             author_id: "u1",
             content: "hello",
             timestamp: 1000,
-            category: None,
+            tags: "[]",
             image_url: None,
-            media_ref_name: None,
             attachment_url: None,
             attachment_type: None,
             attachments: None,
@@ -725,342 +717,4 @@ mod tests {
             .expect("pair insert should be idempotent");
         assert_eq!(inserted_again, 0);
     }
-
-    // ── Favourite categories ──────────────────────────────────────────────────
-
-    use super::{
-        add_favourite_category, list_favourite_categories, list_favourite_categories_for_users,
-        remove_favourite_category,
-    };
-
-    #[test]
-    fn favourite_categories_add_list_remove() {
-        let mut conn = setup_conn();
-        register_user(&mut conn, "u1", "pk1", 100).unwrap();
-
-        let cats = list_favourite_categories(&mut conn, "u1").unwrap();
-        assert!(cats.is_empty());
-
-        add_favourite_category(&mut conn, "u1", "CSGO", 200).unwrap();
-        add_favourite_category(&mut conn, "u1", "games", 201).unwrap();
-
-        let cats = list_favourite_categories(&mut conn, "u1").unwrap();
-        assert_eq!(cats.len(), 2);
-        assert!(cats.contains(&"CSGO".to_string()));
-        assert!(cats.contains(&"games".to_string()));
-
-        remove_favourite_category(&mut conn, "u1", "CSGO").unwrap();
-
-        let cats = list_favourite_categories(&mut conn, "u1").unwrap();
-        assert_eq!(cats, vec!["games"]);
-    }
-
-    #[test]
-    fn add_favourite_category_is_idempotent() {
-        let mut conn = setup_conn();
-        register_user(&mut conn, "u1", "pk1", 100).unwrap();
-
-        let n1 = add_favourite_category(&mut conn, "u1", "movies", 200).unwrap();
-        let n2 = add_favourite_category(&mut conn, "u1", "movies", 201).unwrap();
-        assert_eq!(n1, 1);
-        assert_eq!(n2, 0); // conflict ignored
-
-        let cats = list_favourite_categories(&mut conn, "u1").unwrap();
-        assert_eq!(cats.len(), 1);
-    }
-
-    #[test]
-    fn list_favourite_categories_for_users_batches_correctly() {
-        let mut conn = setup_conn();
-        register_user(&mut conn, "u1", "pk1", 100).unwrap();
-        register_user(&mut conn, "u2", "pk2", 100).unwrap();
-
-        add_favourite_category(&mut conn, "u1", "CSGO", 200).unwrap();
-        add_favourite_category(&mut conn, "u1", "games", 201).unwrap();
-        add_favourite_category(&mut conn, "u2", "music", 202).unwrap();
-
-        let map = list_favourite_categories_for_users(&mut conn, &["u1", "u2"]).unwrap();
-        let mut u1_cats = map["u1"].clone();
-        u1_cats.sort();
-        assert_eq!(u1_cats, vec!["CSGO", "games"]);
-        assert_eq!(map["u2"], vec!["music"]);
-
-        // User with no favourites should not appear in the map.
-        let empty_map =
-            list_favourite_categories_for_users(&mut conn, &["u1", "u2", "nonexistent"]).unwrap();
-        assert!(!empty_map.contains_key("nonexistent"));
-    }
-
-    // ── Post categories ───────────────────────────────────────────────────────
-
-    use super::{list_post_categories, list_post_categories_for_posts, set_post_categories};
-
-    fn make_post(conn: &mut SqliteConnection, post_id: &str, author: &str) {
-        let post = NewPost {
-            id: post_id,
-            author_id: author,
-            content: "test content",
-            timestamp: 1000,
-            category: None,
-            image_url: None,
-            media_ref_name: None,
-            attachment_url: None,
-            attachment_type: None,
-            attachments: None,
-            rally_group_id: None,
-            rally_max_members: None,
-        };
-        create_post_with_deliveries(conn, &post, &[]).unwrap();
-    }
-
-    #[test]
-    fn set_and_list_post_categories() {
-        let mut conn = setup_conn();
-        register_user(&mut conn, "u1", "pk1", 100).unwrap();
-        make_post(&mut conn, "p1", "u1");
-
-        let cats = list_post_categories(&mut conn, "p1").unwrap();
-        assert!(cats.is_empty());
-
-        set_post_categories(&mut conn, "p1", &["CSGO".into(), "games".into()]).unwrap();
-
-        let mut cats = list_post_categories(&mut conn, "p1").unwrap();
-        cats.sort();
-        assert_eq!(cats, vec!["CSGO", "games"]);
-    }
-
-    #[test]
-    fn set_post_categories_is_idempotent() {
-        let mut conn = setup_conn();
-        register_user(&mut conn, "u1", "pk1", 100).unwrap();
-        make_post(&mut conn, "p1", "u1");
-
-        set_post_categories(&mut conn, "p1", &["games".into()]).unwrap();
-        // Calling again with the same category should not error or duplicate.
-        set_post_categories(&mut conn, "p1", &["games".into(), "CSGO".into()]).unwrap();
-
-        let mut cats = list_post_categories(&mut conn, "p1").unwrap();
-        cats.sort();
-        assert_eq!(cats, vec!["CSGO", "games"]);
-    }
-
-    #[test]
-    fn list_post_categories_for_posts_batches_correctly() {
-        let mut conn = setup_conn();
-        register_user(&mut conn, "u1", "pk1", 100).unwrap();
-        make_post(&mut conn, "p1", "u1");
-        make_post(&mut conn, "p2", "u1");
-
-        set_post_categories(&mut conn, "p1", &["CSGO".into()]).unwrap();
-        set_post_categories(&mut conn, "p2", &["music".into(), "jazz".into()]).unwrap();
-
-        let map = list_post_categories_for_posts(&mut conn, &["p1", "p2", "p_missing"]).unwrap();
-        assert_eq!(map["p1"], vec!["CSGO"]);
-        let mut p2 = map["p2"].clone();
-        p2.sort();
-        assert_eq!(p2, vec!["jazz", "music"]);
-        assert!(!map.contains_key("p_missing"));
-    }
-
-    // ── Rescan completion queue ───────────────────────────────────────────────
-
-    use super::{drain_rescan_completions, queue_rescan_completion};
-
-    #[test]
-    fn rescan_completion_queue_and_drain() {
-        let mut conn = setup_conn();
-        register_user(&mut conn, "u1", "pk1", 100).unwrap();
-
-        // Initially empty.
-        let drained = drain_rescan_completions(&mut conn, "u1").unwrap();
-        assert!(drained.is_empty());
-
-        queue_rescan_completion(&mut conn, "u1", "CSGO", 200).unwrap();
-        queue_rescan_completion(&mut conn, "u1", "games", 201).unwrap();
-
-        let mut drained = drain_rescan_completions(&mut conn, "u1").unwrap();
-        drained.sort();
-        assert_eq!(drained, vec!["CSGO", "games"]);
-
-        // After drain the queue should be empty.
-        let after = drain_rescan_completions(&mut conn, "u1").unwrap();
-        assert!(after.is_empty());
-    }
-
-    #[test]
-    fn rescan_completion_queue_is_idempotent() {
-        let mut conn = setup_conn();
-        register_user(&mut conn, "u1", "pk1", 100).unwrap();
-
-        queue_rescan_completion(&mut conn, "u1", "CSGO", 200).unwrap();
-        queue_rescan_completion(&mut conn, "u1", "CSGO", 201).unwrap(); // duplicate
-
-        let drained = drain_rescan_completions(&mut conn, "u1").unwrap();
-        assert_eq!(drained.len(), 1);
-    }
-
-    #[test]
-    fn rescan_completion_drain_is_user_scoped() {
-        let mut conn = setup_conn();
-        register_user(&mut conn, "u1", "pk1", 100).unwrap();
-        register_user(&mut conn, "u2", "pk2", 100).unwrap();
-
-        queue_rescan_completion(&mut conn, "u1", "CSGO", 200).unwrap();
-        queue_rescan_completion(&mut conn, "u2", "music", 201).unwrap();
-
-        // Draining u1 should not affect u2's queue.
-        let u1 = drain_rescan_completions(&mut conn, "u1").unwrap();
-        assert_eq!(u1, vec!["CSGO"]);
-
-        let u2 = drain_rescan_completions(&mut conn, "u2").unwrap();
-        assert_eq!(u2, vec!["music"]);
-    }
-}
-
-// ── Favourite categories ──────────────────────────────────────────────────────
-
-pub fn list_favourite_categories(
-    conn: &mut SqliteConnection,
-    uid: &str,
-) -> QueryResult<Vec<String>> {
-    user_favourite_categories::table
-        .filter(user_favourite_categories::user_id.eq(uid))
-        .select(user_favourite_categories::category)
-        .load(conn)
-}
-
-pub fn add_favourite_category(
-    conn: &mut SqliteConnection,
-    uid: &str,
-    category: &str,
-    now: i64,
-) -> QueryResult<usize> {
-    diesel::insert_into(user_favourite_categories::table)
-        .values(NewUserFavouriteCategory {
-            user_id: uid,
-            category,
-            created_at: now,
-        })
-        .on_conflict((
-            user_favourite_categories::user_id,
-            user_favourite_categories::category,
-        ))
-        .do_nothing()
-        .execute(conn)
-}
-
-pub fn remove_favourite_category(
-    conn: &mut SqliteConnection,
-    uid: &str,
-    category: &str,
-) -> QueryResult<usize> {
-    diesel::delete(
-        user_favourite_categories::table
-            .filter(user_favourite_categories::user_id.eq(uid))
-            .filter(user_favourite_categories::category.eq(category)),
-    )
-    .execute(conn)
-}
-
-/// Returns a map of user_id → their favourite category names, for multiple users at once.
-pub fn list_favourite_categories_for_users(
-    conn: &mut SqliteConnection,
-    user_ids: &[&str],
-) -> QueryResult<HashMap<String, Vec<String>>> {
-    let rows: Vec<(String, String)> = user_favourite_categories::table
-        .filter(user_favourite_categories::user_id.eq_any(user_ids))
-        .select((
-            user_favourite_categories::user_id,
-            user_favourite_categories::category,
-        ))
-        .load(conn)?;
-    let mut map: HashMap<String, Vec<String>> = HashMap::new();
-    for (uid, cat) in rows {
-        map.entry(uid).or_default().push(cat);
-    }
-    Ok(map)
-}
-
-// ── Rescan completion queue ───────────────────────────────────────────────────
-
-pub fn queue_rescan_completion(
-    conn: &mut SqliteConnection,
-    user_id: &str,
-    category: &str,
-    now: i64,
-) -> QueryResult<usize> {
-    diesel::insert_into(pending_rescan_completions::table)
-        .values(NewPendingRescanCompletion {
-            user_id,
-            category,
-            created_at: now,
-        })
-        .on_conflict((
-            pending_rescan_completions::user_id,
-            pending_rescan_completions::category,
-        ))
-        .do_nothing()
-        .execute(conn)
-}
-
-/// Returns all pending rescan completion categories for the user and deletes them atomically.
-pub fn drain_rescan_completions(
-    conn: &mut SqliteConnection,
-    user_id: &str,
-) -> QueryResult<Vec<String>> {
-    let categories: Vec<String> = pending_rescan_completions::table
-        .filter(pending_rescan_completions::user_id.eq(user_id))
-        .select(pending_rescan_completions::category)
-        .load(conn)?;
-    diesel::delete(
-        pending_rescan_completions::table.filter(pending_rescan_completions::user_id.eq(user_id)),
-    )
-    .execute(conn)?;
-    Ok(categories)
-}
-
-// ── Post categories ───────────────────────────────────────────────────────────
-
-pub fn set_post_categories(
-    conn: &mut SqliteConnection,
-    post_id: &str,
-    categories: &[String],
-) -> QueryResult<()> {
-    for cat in categories {
-        diesel::insert_into(post_categories::table)
-            .values(NewPostCategory {
-                post_id,
-                category: cat.as_str(),
-            })
-            .on_conflict((post_categories::post_id, post_categories::category))
-            .do_nothing()
-            .execute(conn)?;
-    }
-    Ok(())
-}
-
-pub fn list_post_categories(
-    conn: &mut SqliteConnection,
-    post_id: &str,
-) -> QueryResult<Vec<String>> {
-    post_categories::table
-        .filter(post_categories::post_id.eq(post_id))
-        .select(post_categories::category)
-        .load(conn)
-}
-
-/// Fetch categories for multiple posts at once. Returns a map post_id → categories.
-pub fn list_post_categories_for_posts(
-    conn: &mut SqliteConnection,
-    post_ids: &[&str],
-) -> QueryResult<HashMap<String, Vec<String>>> {
-    let rows: Vec<(String, String)> = post_categories::table
-        .filter(post_categories::post_id.eq_any(post_ids))
-        .select((post_categories::post_id, post_categories::category))
-        .load(conn)?;
-    let mut map: HashMap<String, Vec<String>> = HashMap::new();
-    for (pid, cat) in rows {
-        map.entry(pid).or_default().push(cat);
-    }
-    Ok(map)
 }

@@ -2,8 +2,8 @@ use diesel::prelude::*;
 
 use super::models::{
     Friendship, Group, GroupMember, GroupMessage, NewFriendship, NewGroup, NewGroupMember,
-    NewGroupMessage, NewGroupMessageDelivery, NewPendingMessage, NewPost, NewPostDelivery,
-    NewUser, PendingMessage, Post, PostDelivery, User,
+    NewGroupMessage, NewGroupMessageDelivery, NewPendingMessage, NewPost, NewPostDelivery, NewUser,
+    PendingMessage, Post, PostDelivery, User,
 };
 use super::schema::{
     friendships, group_members, group_message_deliveries, group_messages, groups, pending_messages,
@@ -717,5 +717,4 @@ mod tests {
             .expect("pair insert should be idempotent");
         assert_eq!(inserted_again, 0);
     }
-
 }

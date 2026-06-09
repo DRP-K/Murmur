@@ -408,7 +408,8 @@ mod tests {
                 .iter()
                 .find(|p| {
                     let tags: Vec<String> = serde_json::from_str(&p.tags).unwrap_or_default();
-                    normalize_seed_tag(expected.media_ref_name).is_some_and(|tag| tags.contains(&tag))
+                    normalize_seed_tag(expected.media_ref_name)
+                        .is_some_and(|tag| tags.contains(&tag))
                 })
                 .expect("expected extra post should be present");
             let tags: Vec<String> = serde_json::from_str(&actual.tags).unwrap_or_default();
@@ -552,10 +553,7 @@ mod tests {
         repository::mark_post_delivered(&mut conn, &post_id, &user_id, 1234)
             .expect("delivery should mark delivered");
         diesel::update(posts::table.filter(posts::id.eq(&post_id)))
-            .set((
-                posts::tags.eq("[]"),
-                posts::image_url.eq(None::<String>),
-            ))
+            .set((posts::tags.eq("[]"), posts::image_url.eq(None::<String>)))
             .execute(&mut conn)
             .expect("post metadata should be cleared");
 

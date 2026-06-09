@@ -22,10 +22,9 @@ use crate::seed;
 use crate::wire::{
     AckGroupMessageRequest, AckPostRequest, AddFriendRequest, AuthRequest, AuthResponse,
     CreatePostRequest, FriendInfo, FriendListResponse, GroupInfo, GroupListResponse,
-    GroupMessageListResponse,
-    InviteTokenResponse, MediaUploadResponse, MessageListResponse, PostAssistRequest,
-    PostAssistResponse, PostListResponse, RedeemInviteTokenRequest, RegisterRequest,
-    SendGroupMessageRequest, SendMessageRequest, ServerEnvelope,
+    GroupMessageListResponse, InviteTokenResponse, MediaUploadResponse, MessageListResponse,
+    PostAssistRequest, PostAssistResponse, PostListResponse, RedeemInviteTokenRequest,
+    RegisterRequest, SendGroupMessageRequest, SendMessageRequest, ServerEnvelope,
 };
 
 #[derive(Debug)]
@@ -1073,7 +1072,6 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String) {
             }
             debug!(user_id = %user_id, count, "websocket group message drain queued");
         }
-
     } else {
         error!(user_id = %user_id, "websocket initial drain could not acquire db connection");
     }

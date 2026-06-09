@@ -50,10 +50,13 @@ impl AppState {
     }
 
     fn with_key(pool: DbPool, deepseek_api_key: Option<Arc<String>>) -> Self {
-        let rawg_api_key = std::env::var("RAWG_API_KEY").ok().filter(|k| !k.is_empty()).map(|k| {
-            info!("RAWG_API_KEY found — game seed posts will be fetched from RAWG");
-            Arc::new(k)
-        });
+        let rawg_api_key = std::env::var("RAWG_API_KEY")
+            .ok()
+            .filter(|k| !k.is_empty())
+            .map(|k| {
+                info!("RAWG_API_KEY found — game seed posts will be fetched from RAWG");
+                Arc::new(k)
+            });
         Self {
             pool,
             sessions: Arc::new(RwLock::new(HashMap::new())),

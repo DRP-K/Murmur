@@ -256,6 +256,7 @@ async fn post_fanout_and_friend_add() {
             "content": "hello feed",
             "timestamp": 1000,
             "recipient_ids": [bob.user_id, carol.user_id],
+            "tags": ["#game", "Portal 2", "#game"],
         }),
     )
     .await;
@@ -272,6 +273,7 @@ async fn post_fanout_and_friend_add() {
     let body = posts.into_body().collect().await.expect("body").to_bytes();
     let pulled: Value = serde_json::from_slice(&body).expect("posts response should parse");
     assert_eq!(pulled["posts"][0]["id"], "p1");
+    assert_eq!(pulled["posts"][0]["tags"], json!(["#game", "#portal-2"]));
 
     let ack = request(
         app.clone(),
@@ -986,18 +988,22 @@ async fn new_user_gets_seeded_friends_posts_and_welcome_messages() {
         posts["posts"].as_array().expect("posts array").len() >= 3,
         "at least one post per bot expected"
     );
-    for (category, media_ref_name) in [
-        ("music", "Boston"),
-        ("games", "Portal 2"),
-        ("movies", "Fuze"),
+    for (category_tag, media_tag) in [
+        ("#music", "#boston"),
+        ("#game", "#portal-2"),
+        ("#movie", "#fuze"),
     ] {
         let post = posts["posts"]
             .as_array()
             .expect("posts array")
             .iter()
-            .find(|post| post["media_ref_name"] == media_ref_name)
-            .unwrap_or_else(|| panic!("expected {media_ref_name} seed post"));
-        assert_eq!(post["category"], category);
+            .find(|post| {
+                let tags = post["tags"].as_array().expect("tags array");
+                tags.iter().any(|tag| tag == media_tag)
+            })
+            .unwrap_or_else(|| panic!("expected {media_tag} seed post"));
+        let tags = post["tags"].as_array().expect("tags array");
+        assert!(tags.iter().any(|tag| tag == category_tag));
         assert!(
             post["image_url"]
                 .as_str()

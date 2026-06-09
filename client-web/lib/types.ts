@@ -23,15 +23,13 @@ export type ServerEnvelope =
       author_id: string
       content: string
       timestamp: number
-      category?: string | null
-      media_ref_name?: string | null
+      tags?: string[]
       image_url?: string | null
       attachment_url?: string | null
       attachment_type?: 'image' | 'video' | null
       attachments?: MediaItem[] | null
       rally_group_id?: string | null
       rally_max_members?: number | null
-      categories?: string[]
     }
   | {
       type: 'group_message'
@@ -45,8 +43,6 @@ export type ServerEnvelope =
       type: 'group_update'
       group: GroupInfo
     }
-  | { type: 'post_category_update'; post_id: string; categories: string[] }
-  | { type: 'rescan_complete'; category: string }
   | { type: 'delivered_ack'; id: string }
 
 export interface RegisterRequest {
@@ -82,8 +78,7 @@ export interface CreatePostRequest {
   content: string
   timestamp: number
   recipient_ids: string[]
-  category?: string | null
-  media_ref_name?: string | null
+  tags?: string[]
   image_url?: string | null
   attachment_url?: string | null
   attachment_type?: string | null
@@ -124,15 +119,13 @@ export interface Post {
   content: string
   timestamp: number
   is_own: boolean
-  category?: string | null
-  media_ref_name?: string | null
+  tags: string[]
   image_url?: string | null
   attachment_url?: string | null
   attachment_type?: 'image' | 'video' | null
   attachments?: MediaItem[] | null
   rally_group_id?: string | null
   rally_max_members?: number | null
-  categories: string[]
 }
 
 export interface Message {

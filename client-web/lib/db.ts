@@ -49,8 +49,10 @@ export interface StoredPost {
   content: string
   timestamp: number
   is_own: boolean
+  tags: string[]
   category?: string | null
   media_ref_name?: string | null
+  categories?: string[]
   image_url?: string | null
   rally_group_id?: string | null
   rally_max_members?: number | null
@@ -66,6 +68,11 @@ export interface LocalTag {
 export interface LocalFriendTag {
   friendId: string
   tagId: string
+}
+
+export interface FavoritePostTag {
+  tag: string
+  createdAt: number
 }
 
 // Persisted conversation summary — mirrors ConversationMeta in the Zustand store.
@@ -122,6 +129,7 @@ class MurmurDatabase extends Dexie {
   anonMessages!: EntityTable<StoredAnonMessage, 'id'>
   tags!: EntityTable<LocalTag, 'id'>
   friendTags!: Table<LocalFriendTag, [string, string]>
+  favoritePostTags!: EntityTable<FavoritePostTag, 'tag'>
   groups!: EntityTable<StoredGroup, 'id'>
   groupMembers!: EntityTable<StoredGroupMember, 'id'>
   groupMessages!: EntityTable<StoredGroupMessage, 'id'>
@@ -171,7 +179,48 @@ class MurmurDatabase extends Dexie {
       groupMembers: 'id, groupId, userId',
       groupMessages: 'id, groupId, sentAt',
     })
+    this.version(12).stores({
+      posts: 'id, timestamp, rally_group_id',
+      favoritePostTags: 'tag, createdAt',
+      groups: 'id, createdAt',
+      groupMembers: 'id, groupId, userId',
+      groupMessages: 'id, groupId, sentAt',
+    }).upgrade(async (tx) => {
+      await tx.table('posts').toCollection().modify((post) => {
+        const tags = new Set<string>(Array.isArray(post.tags) ? post.tags : [])
+        for (const value of [post.category, post.media_ref_name, ...(post.categories ?? [])]) {
+          const tag = normalizeStoredPostTag(value)
+          if (tag) tags.add(tag)
+        }
+        post.tags = Array.from(tags)
+        delete post.category
+        delete post.media_ref_name
+        delete post.categories
+      })
+    })
   }
+}
+
+function normalizeStoredPostTag(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim().replace(/^#+/, '')
+  if (!trimmed) return null
+  let out = '#'
+  let lastDash = false
+  for (const char of trimmed.toLowerCase()) {
+    if (/[a-z0-9]/.test(char)) {
+      out += char
+      lastDash = false
+    } else if (!lastDash && out.length > 1) {
+      out += '-'
+      lastDash = true
+    }
+  }
+  out = out.replace(/-+$/, '')
+  if (out.length <= 1) return null
+  if (out === '#games') return '#game'
+  if (out === '#movies') return '#movie'
+  return out
 }
 
 export const db = new MurmurDatabase()

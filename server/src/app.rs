@@ -223,11 +223,6 @@ pub fn router(state: AppState) -> Router {
         .route("/api/friends", get(api::get_friends).post(api::add_friend))
         .route("/api/invite-token", post(api::create_invite_token))
         .route("/api/friends/by-token", post(api::add_friend_by_token))
-        .route(
-            "/api/favourites",
-            get(api::list_favourites).post(api::add_favourite),
-        )
-        .route("/api/favourites/{category}", delete(api::remove_favourite))
         .route("/api/ws", get(api::ws_handler))
         .layer(cors)
         .with_state(state)

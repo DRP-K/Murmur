@@ -54,17 +54,14 @@ pub enum ServerEnvelope {
         author_id: String,
         content: String,
         timestamp: i64,
-        category: Option<String>,
-        media_ref_name: Option<String>,
+        #[serde(default)]
+        tags: Vec<String>,
         image_url: Option<String>,
         attachment_url: Option<String>,
         attachment_type: Option<String>,
         attachments: Option<Vec<MediaItem>>,
         rally_group_id: Option<String>,
         rally_max_members: Option<i32>,
-        /// AI-classified categories matching recipients' favourites.
-        #[serde(default)]
-        categories: Vec<String>,
     },
     #[serde(rename = "group_message")]
     GroupMessage {
@@ -74,13 +71,6 @@ pub enum ServerEnvelope {
         payload_hex: String,
         sent_at: i64,
     },
-    #[serde(rename = "post_category_update")]
-    PostCategoryUpdate {
-        post_id: String,
-        categories: Vec<String>,
-    },
-    #[serde(rename = "rescan_complete")]
-    RescanComplete { category: String },
     #[serde(rename = "group_update")]
     GroupUpdate { group: GroupInfo },
     #[serde(rename = "delivered_ack")]
@@ -102,19 +92,18 @@ impl From<PendingMessage> for ServerEnvelope {
 
 impl From<Post> for ServerEnvelope {
     fn from(value: Post) -> Self {
-        Self::post_from_db(value, Vec::new())
+        Self::post_from_db(value)
     }
 }
 
 impl ServerEnvelope {
-    pub fn post_from_db(value: Post, categories: Vec<String>) -> Self {
+    pub fn post_from_db(value: Post) -> Self {
         Self::Post {
             id: value.id,
             author_id: value.author_id,
             content: value.content,
             timestamp: value.timestamp,
-            category: value.category,
-            media_ref_name: value.media_ref_name,
+            tags: serde_json::from_str(&value.tags).unwrap_or_default(),
             image_url: value.image_url,
             attachment_url: value.attachment_url,
             attachment_type: value.attachment_type,
@@ -124,7 +113,6 @@ impl ServerEnvelope {
                 .and_then(|s| serde_json::from_str(s).ok()),
             rally_group_id: value.rally_group_id,
             rally_max_members: value.rally_max_members,
-            categories,
         }
     }
 }
@@ -152,8 +140,8 @@ pub struct CreatePostRequest {
     pub content: String,
     pub timestamp: i64,
     pub recipient_ids: Vec<String>,
-    pub category: Option<String>,
-    pub media_ref_name: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
     pub image_url: Option<String>,
     pub attachment_url: Option<String>,
     pub attachment_type: Option<String>,
@@ -278,14 +266,4 @@ pub struct InviteTokenResponse {
 #[derive(Debug, Deserialize)]
 pub struct RedeemInviteTokenRequest {
     pub code: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct FavouriteCategoriesResponse {
-    pub categories: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct AddFavouriteCategoryRequest {
-    pub category: String,
 }

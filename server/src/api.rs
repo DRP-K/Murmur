@@ -20,9 +20,9 @@ use crate::db::models::{NewGroup, NewGroupMember, NewGroupMessage, NewPendingMes
 use crate::db::repository;
 use crate::seed;
 use crate::wire::{
-    AckGroupMessageRequest, AckPostRequest, AddFavouriteCategoryRequest, AddFriendRequest,
-    AuthRequest, AuthResponse, CreatePostRequest, FavouriteCategoriesResponse, FriendInfo,
-    FriendListResponse, GroupInfo, GroupListResponse, GroupMessageListResponse,
+    AckGroupMessageRequest, AckPostRequest, AddFriendRequest, AuthRequest, AuthResponse,
+    CreatePostRequest, FriendInfo, FriendListResponse, GroupInfo, GroupListResponse,
+    GroupMessageListResponse,
     InviteTokenResponse, MediaUploadResponse, MessageListResponse, PostAssistRequest,
     PostAssistResponse, PostListResponse, RedeemInviteTokenRequest, RegisterRequest,
     SendGroupMessageRequest, SendMessageRequest, ServerEnvelope,
@@ -75,6 +75,45 @@ impl From<AuthError> for ApiError {
 
 pub fn now_ts() -> i64 {
     Utc::now().timestamp()
+}
+
+fn normalize_post_tag(input: &str) -> Option<String> {
+    let trimmed = input.trim().trim_start_matches('#');
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let mut out = String::from("#");
+    let mut last_was_dash = false;
+    for ch in trimmed.chars().flat_map(char::to_lowercase) {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch);
+            last_was_dash = false;
+        } else if !last_was_dash && out.len() > 1 {
+            out.push('-');
+            last_was_dash = true;
+        }
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    if out.len() <= 1 || out.len() > 50 {
+        return None;
+    }
+    Some(out)
+}
+
+fn normalize_post_tags(tags: &[String]) -> Vec<String> {
+    let mut normalized = Vec::new();
+    for tag in tags {
+        let Some(tag) = normalize_post_tag(tag) else {
+            continue;
+        };
+        if !normalized.contains(&tag) {
+            normalized.push(tag);
+        }
+    }
+    normalized
 }
 
 fn db_error(err: impl std::fmt::Display) -> ApiError {
@@ -384,6 +423,8 @@ pub async fn post_post(
         .attachments
         .as_ref()
         .map(|v| serde_json::to_string(v).unwrap_or_default());
+    let tags = normalize_post_tags(&payload.tags);
+    let tags_json = serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string());
     if let Some(rally) = &payload.rally {
         if rally.max_members < 2 || rally.max_members > 20 {
             return Err(ApiError::BadRequest(
@@ -401,8 +442,7 @@ pub async fn post_post(
         author_id: &author_id,
         content: &payload.content,
         timestamp: payload.timestamp,
-        category: payload.category.as_deref(),
-        media_ref_name: payload.media_ref_name.as_deref(),
+        tags: &tags_json,
         image_url: payload.image_url.as_deref(),
         attachment_url: payload.attachment_url.as_deref(),
         attachment_type: payload.attachment_type.as_deref(),
@@ -449,73 +489,18 @@ pub async fn post_post(
         }
     }
 
-    // Spawn async AI classification against recipients' favourite categories.
-    if let Some(api_key) = state.deepseek_api_key.clone() {
-        let pool = state.pool.clone();
-        let http = state.http_client.clone();
-        let state2 = state.clone();
-        let post_id = payload.id.clone();
-        let content = payload.content.clone();
-        let post_category = payload.category.clone();
-        let media_ref_name = payload.media_ref_name.clone();
-        let recipient_ids: Vec<String> = payload.recipient_ids.clone();
-        tokio::spawn(async move {
-            let Ok(mut conn) = pool.get() else { return };
-            let recipient_refs: Vec<&str> = recipient_ids.iter().map(String::as_str).collect();
-            let Ok(fav_map) =
-                repository::list_favourite_categories_for_users(&mut conn, &recipient_refs)
-            else {
-                return;
-            };
-            // Build per-recipient category sets so each recipient only sees categories
-            // that are in their own favourites, not a global union.
-            let mut candidates: Vec<String> = fav_map.values().flatten().cloned().collect();
-            candidates.sort();
-            candidates.dedup();
-            if candidates.is_empty() {
-                return;
-            }
-            let matched = bot_ai::classify_post_category(
-                &http,
-                &api_key,
-                &content,
-                post_category.as_deref(),
-                media_ref_name.as_deref(),
-                &candidates,
-            )
-            .await;
-            if matched.is_empty() {
-                return;
-            }
-            if let Err(e) = repository::set_post_categories(&mut conn, &post_id, &matched) {
-                warn!(post_id = %post_id, error = %e, "failed to store post categories");
-                return;
-            }
-            // Push the updated categories to each recipient that is currently online.
-            let envelope = ServerEnvelope::PostCategoryUpdate {
-                post_id: post_id.clone(),
-                categories: matched,
-            };
-            for recipient_id in &recipient_ids {
-                state2.send_to_online(recipient_id, envelope.clone());
-            }
-        });
-    }
-
     let envelope = ServerEnvelope::Post {
         id: payload.id.clone(),
         author_id,
         content: payload.content,
         timestamp: payload.timestamp,
-        category: payload.category,
-        media_ref_name: payload.media_ref_name,
+        tags,
         image_url: payload.image_url,
         attachment_url: payload.attachment_url,
         attachment_type: payload.attachment_type,
         attachments: payload.attachments,
         rally_group_id: payload.rally.as_ref().map(|r| r.group_id.clone()),
         rally_max_members: payload.rally.as_ref().map(|r| r.max_members),
-        categories: vec![],
     };
 
     for recipient_id in payload.recipient_ids {
@@ -572,15 +557,9 @@ pub async fn get_posts(
     let mut conn = state.pool.get().map_err(db_error)?;
     let raw_posts =
         repository::list_pending_posts(&mut conn, &user_id, now_ts()).map_err(db_error)?;
-    let post_ids: Vec<&str> = raw_posts.iter().map(|p| p.id.as_str()).collect();
-    let categories_map =
-        repository::list_post_categories_for_posts(&mut conn, &post_ids).map_err(db_error)?;
     let posts = raw_posts
         .into_iter()
-        .map(|p| {
-            let cats = categories_map.get(&p.id).cloned().unwrap_or_default();
-            ServerEnvelope::post_from_db(p, cats)
-        })
+        .map(ServerEnvelope::post_from_db)
         .collect();
 
     debug!(user_id = %user_id, "pending posts fetched");
@@ -1050,152 +1029,6 @@ pub async fn add_friend_by_token(
     Ok(StatusCode::ACCEPTED)
 }
 
-pub async fn list_favourites(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<Json<FavouriteCategoriesResponse>, ApiError> {
-    let user_id = authed_user(&headers, &state)?;
-    let mut conn = state.pool.get().map_err(db_error)?;
-    let categories =
-        repository::list_favourite_categories(&mut conn, &user_id).map_err(db_error)?;
-    Ok(Json(FavouriteCategoriesResponse { categories }))
-}
-
-pub async fn add_favourite(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(payload): Json<AddFavouriteCategoryRequest>,
-) -> Result<StatusCode, ApiError> {
-    let user_id = authed_user(&headers, &state)?;
-    let category = payload.category.trim().to_string();
-    if category.is_empty() || category.len() > 50 {
-        return Err(ApiError::BadRequest(
-            "category must be 1–50 characters".to_string(),
-        ));
-    }
-    let mut conn = state.pool.get().map_err(db_error)?;
-    let inserted = repository::add_favourite_category(&mut conn, &user_id, &category, now_ts())
-        .map_err(db_error)?;
-    info!(user_id = %user_id, category = %category, "favourite category added");
-
-    // Rescan existing posts for this user against the newly added category.
-    if inserted > 0 {
-        if let Some(api_key) = state.deepseek_api_key.clone() {
-            info!(user_id = %user_id, category = %category, "triggering post rescan for new favourite category");
-            let pool = state.pool.clone();
-            let http = state.http_client.clone();
-            let state2 = state.clone();
-            let uid = user_id.clone();
-            let cat = category.clone();
-            tokio::spawn(async move {
-                rescan_posts_for_category(&pool, &http, &api_key, &state2, &uid, &cat).await;
-            });
-        }
-    }
-
-    Ok(StatusCode::CREATED)
-}
-
-async fn rescan_posts_for_category(
-    pool: &crate::db::DbPool,
-    http: &reqwest::Client,
-    api_key: &str,
-    state: &AppState,
-    user_id: &str,
-    category: &str,
-) {
-    // --- read phase: load posts and existing tags, then release the connection ---
-    let (posts, existing_cats) = {
-        let Ok(mut conn) = pool.get() else { return };
-        let Ok(posts) = repository::list_all_posts_for_user(&mut conn, user_id) else {
-            return;
-        };
-        let post_ids: Vec<&str> = posts.iter().map(|p| p.id.as_str()).collect();
-        let Ok(existing_cats) = repository::list_post_categories_for_posts(&mut conn, &post_ids)
-        else {
-            return;
-        };
-        (posts, existing_cats)
-        // conn returned to pool here
-    };
-
-    let candidates = vec![category.to_string()];
-
-    let posts_to_scan: Vec<&crate::db::models::Post> = posts
-        .iter()
-        .filter(|post| {
-            !existing_cats
-                .get(&post.id)
-                .map(|cats| cats.contains(&category.to_string()))
-                .unwrap_or(false)
-        })
-        .collect();
-
-    // --- parallel classify phase: all DeepSeek calls in flight at once ---
-    let classify_futures = posts_to_scan.iter().map(|post| {
-        bot_ai::classify_post_category(
-            http,
-            api_key,
-            &post.content,
-            post.category.as_deref(),
-            post.media_ref_name.as_deref(),
-            &candidates,
-        )
-    });
-    let results = futures_util::future::join_all(classify_futures).await;
-
-    // --- write phase: re-acquire connection, store matches, push live updates ---
-    let Ok(mut conn) = pool.get() else { return };
-    let mut matched_count = 0u32;
-
-    for (post, matched) in posts_to_scan.iter().zip(results) {
-        if !matched.is_empty() {
-            if let Err(e) = repository::set_post_categories(&mut conn, &post.id, &matched) {
-                warn!(post_id = %post.id, error = %e, "rescan: failed to store category");
-            } else {
-                matched_count += 1;
-                state.send_to_online(
-                    user_id,
-                    ServerEnvelope::PostCategoryUpdate {
-                        post_id: post.id.clone(),
-                        categories: matched,
-                    },
-                );
-            }
-        }
-    }
-
-    info!(
-        user_id = %user_id,
-        category = %category,
-        scanned = posts_to_scan.len(),
-        matched = matched_count,
-        "post rescan complete"
-    );
-
-    if let Err(e) = repository::queue_rescan_completion(&mut conn, user_id, category, now_ts()) {
-        warn!(user_id = %user_id, category = %category, error = %e, "failed to queue rescan completion");
-    }
-    state.send_to_online(
-        user_id,
-        ServerEnvelope::RescanComplete {
-            category: category.to_string(),
-        },
-    );
-}
-
-pub async fn remove_favourite(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Path(category): Path<String>,
-) -> Result<StatusCode, ApiError> {
-    let user_id = authed_user(&headers, &state)?;
-    let mut conn = state.pool.get().map_err(db_error)?;
-    repository::remove_favourite_category(&mut conn, &user_id, &category).map_err(db_error)?;
-    info!(user_id = %user_id, category = %category, "favourite category removed");
-    Ok(StatusCode::NO_CONTENT)
-}
-
 pub async fn ws_handler(
     State(state): State<AppState>,
     Query(params): Query<HashMap<String, String>>,
@@ -1227,12 +1060,8 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String) {
 
         if let Ok(posts) = repository::list_pending_posts(&mut conn, &user_id, now_ts()) {
             let count = posts.len();
-            let post_ids: Vec<&str> = posts.iter().map(|p| p.id.as_str()).collect();
-            let cats_map = repository::list_post_categories_for_posts(&mut conn, &post_ids)
-                .unwrap_or_default();
             for post in posts {
-                let cats = cats_map.get(&post.id).cloned().unwrap_or_default();
-                let _ = tx.send(ServerEnvelope::post_from_db(post, cats));
+                let _ = tx.send(ServerEnvelope::post_from_db(post));
             }
             debug!(user_id = %user_id, count, "websocket post drain queued");
         }
@@ -1245,11 +1074,6 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String) {
             debug!(user_id = %user_id, count, "websocket group message drain queued");
         }
 
-        if let Ok(categories) = repository::drain_rescan_completions(&mut conn, &user_id) {
-            for category in categories {
-                let _ = tx.send(ServerEnvelope::RescanComplete { category });
-            }
-        }
     } else {
         error!(user_id = %user_id, "websocket initial drain could not acquire db connection");
     }

@@ -105,6 +105,47 @@ fn bot_credentials(seed: u8) -> (String, String) {
     (user_id, pubkey_hex)
 }
 
+fn normalize_seed_tag(input: &str) -> Option<String> {
+    let trimmed = input.trim().trim_start_matches('#');
+    if trimmed.is_empty() {
+        return None;
+    }
+    let mut out = String::from("#");
+    let mut last_was_dash = false;
+    for ch in trimmed.chars().flat_map(char::to_lowercase) {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch);
+            last_was_dash = false;
+        } else if !last_was_dash && out.len() > 1 {
+            out.push('-');
+            last_was_dash = true;
+        }
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    if out.len() <= 1 { None } else { Some(out) }
+}
+
+fn media_tags_json(category: &str, media_ref_name: &str) -> String {
+    let category_tag = match category {
+        "games" => Some("#game".to_string()),
+        "movies" => Some("#movie".to_string()),
+        "music" => Some("#music".to_string()),
+        other => normalize_seed_tag(other),
+    };
+    let mut tags = Vec::new();
+    if let Some(tag) = category_tag {
+        tags.push(tag);
+    }
+    if let Some(tag) = normalize_seed_tag(media_ref_name) {
+        if !tags.contains(&tag) {
+            tags.push(tag);
+        }
+    }
+    serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string())
+}
+
 /// Register all seed bot accounts. Safe to call on every startup — idempotent.
 pub fn seed_bots(conn: &mut SqliteConnection) {
     for bot in BOTS {
@@ -161,9 +202,8 @@ pub fn seed_for_new_user(
                 author_id: bot_id,
                 content,
                 timestamp: now - (3600 * (i as i64 * 3 + j as i64 + 1)),
-                category: None,
+                tags: "[]",
                 image_url: None,
-                media_ref_name: None,
                 attachment_url: None,
                 attachment_type: None,
                 attachments: None,
@@ -236,13 +276,13 @@ fn ensure_extra_posts(
     for (i, extra) in EXTRA_BOT_POSTS.iter().enumerate() {
         let (extra_bot_id, _) = &bot_ids[extra.bot_index];
         let post_id = format!("seed:{extra_bot_id}:{new_user_id}:extra:{i}");
+        let tags = media_tags_json(extra.category, extra.media_ref_name);
         let post = NewPost {
             id: &post_id,
             author_id: extra_bot_id,
             content: extra.content,
             timestamp: now - (120 - (i as i64 * 60)),
-            category: Some(extra.category),
-            media_ref_name: Some(extra.media_ref_name),
+            tags: &tags,
             image_url: Some(extra.image_url),
             attachment_url: None,
             attachment_type: None,
@@ -258,13 +298,13 @@ fn ensure_extra_posts(
     for (i, dyn_post) in dynamic_posts.iter().enumerate() {
         let (dyn_bot_id, _) = &bot_ids[dyn_post.bot_index % bot_ids.len()];
         let post_id = format!("seed:{dyn_bot_id}:{new_user_id}:dyn:{i}");
+        let tags = media_tags_json(dyn_post.category, &dyn_post.media_ref_name);
         let post = NewPost {
             id: &post_id,
             author_id: dyn_bot_id,
             content: &dyn_post.content,
             timestamp: now - (3600 * (50 - i as i64)),
-            category: Some(dyn_post.category),
-            media_ref_name: Some(&dyn_post.media_ref_name),
+            tags: &tags,
             image_url: Some(&dyn_post.image_url),
             attachment_url: None,
             attachment_type: None,
@@ -356,7 +396,7 @@ mod tests {
             BOTS.iter().map(|bot| bot_credentials(bot.seed).0).collect();
         let extra_posts: Vec<_> = posts
             .iter()
-            .filter(|p| p.category.is_some() && p.media_ref_name.is_some() && p.image_url.is_some())
+            .filter(|p| p.tags != "[]" && p.image_url.is_some())
             .collect();
         assert_eq!(
             extra_posts.len(),
@@ -366,18 +406,23 @@ mod tests {
         for (idx, expected) in EXTRA_BOT_POSTS.iter().enumerate() {
             let actual = extra_posts
                 .iter()
-                .find(|p| p.media_ref_name.as_deref() == Some(expected.media_ref_name))
+                .find(|p| {
+                    let tags: Vec<String> = serde_json::from_str(&p.tags).unwrap_or_default();
+                    normalize_seed_tag(expected.media_ref_name).is_some_and(|tag| tags.contains(&tag))
+                })
                 .expect("expected extra post should be present");
+            let tags: Vec<String> = serde_json::from_str(&actual.tags).unwrap_or_default();
             assert_eq!(
                 actual.author_id, bot_ids_by_index[expected.bot_index],
                 "extra post author should match configured bot"
             );
             assert_eq!(actual.content, expected.content);
-            assert_eq!(actual.category.as_deref(), Some(expected.category));
-            assert_eq!(
-                actual.media_ref_name.as_deref(),
-                Some(expected.media_ref_name)
-            );
+            let expected_tags: Vec<String> =
+                serde_json::from_str(&media_tags_json(expected.category, expected.media_ref_name))
+                    .unwrap();
+            for tag in expected_tags {
+                assert!(tags.contains(&tag));
+            }
             assert_eq!(actual.image_url.as_deref(), Some(expected.image_url));
             if idx == 1 {
                 assert!(
@@ -508,8 +553,7 @@ mod tests {
             .expect("delivery should mark delivered");
         diesel::update(posts::table.filter(posts::id.eq(&post_id)))
             .set((
-                posts::category.eq(None::<String>),
-                posts::media_ref_name.eq(None::<String>),
+                posts::tags.eq("[]"),
                 posts::image_url.eq(None::<String>),
             ))
             .execute(&mut conn)
@@ -522,8 +566,9 @@ mod tests {
             .select(crate::db::models::Post::as_select())
             .first(&mut conn)
             .expect("post should exist");
-        assert_eq!(repaired.category.as_deref(), Some("music"));
-        assert_eq!(repaired.media_ref_name.as_deref(), Some("Boston"));
+        let repaired_tags: Vec<String> = serde_json::from_str(&repaired.tags).unwrap();
+        assert!(repaired_tags.contains(&"#music".to_string()));
+        assert!(repaired_tags.contains(&"#boston".to_string()));
         assert!(
             repaired
                 .image_url
@@ -607,8 +652,8 @@ mod tests {
         let dyn_posts: Vec<_> = posts
             .iter()
             .filter(|p| {
-                p.media_ref_name.as_deref() == Some("Test Game")
-                    || p.media_ref_name.as_deref() == Some("Test Song")
+                let tags: Vec<String> = serde_json::from_str(&p.tags).unwrap_or_default();
+                tags.contains(&"#test-game".to_string()) || tags.contains(&"#test-song".to_string())
             })
             .collect();
         assert_eq!(dyn_posts.len(), 2, "both dynamic posts present");
